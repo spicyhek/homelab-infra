@@ -1,0 +1,39 @@
+groups:
+  - name: system-alerts
+    rules:
+      - alert: InstanceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Instance is down"
+          description: "Prometheus target is no longer responding, do something!!"
+
+      - alert: NginxInternalDown
+        expr: probe_success{job="blackbox-http", target="http://web:80"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Nginx is down internally"
+          description: "Blackbox probe to http://web:80 is failing. Nginx container or docker networking may be down. Do something!!"
+
+      - alert: SitePublicDown
+        expr: probe_success{job="blackbox-http", target="https://brendanmanley.com"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Public site is down"
+          description: "Blackbox probe to https://brendanmanley.com is failing. Could be Cloudflare/tunnel/DNS/origin. Do something!!"
+
+      - alert: SiteHighLatency
+        expr: probe_duration_seconds{job="blackbox-http", target="https://brendanmanley.com"} > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Public site is slow"
+          description: "Probe duration > 1s for 5m. Check DNS/TCP/TLS timing panels."
+        

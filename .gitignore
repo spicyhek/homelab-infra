@@ -1,0 +1,6 @@
+*.env
+*.kubeconfig
+k3s.yml
+node-token
+*.pem
+*.key
