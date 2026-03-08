@@ -1,17 +1,17 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: alertmanager
+  name: alertmanager-discord
   namespace: monitoring
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: alertmanager
+      app: alertmanager-discord
   template:
     metadata:
       labels:
-        app: alertmanager
+        app: alertmanager-discord
     spec:
       containers:
         - name: alertmanager-discord
@@ -49,11 +49,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: alertmanager
+  name: alertmanager-discord
   namespace: monitoring
 spec:
   selector:
-    app: alertmanager
+    app: alertmanager-discord
   ports:
     - name: http
       port: 8080
