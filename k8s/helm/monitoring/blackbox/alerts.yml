@@ -1,0 +1,28 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: blackbox-alerts
+  namespace: monitoring
+  labels:
+    release: mon
+spec:
+  groups:
+    - name: blackbox.rules
+      rules:
+        - alert: EndpointDown
+          expr: probe_success == 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Endpoint down: {{ $labels.instance }}"
+            description: "Blackbox probe is failing for {{ $labels.instance }} for 1 minute. do something!"
+
+        - alert: EndpointSlow
+          expr: probe_duration_seconds > 2
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Endpoint slow: {{ $labels.instance }}"
+            description: "Probe duration >2s for {{ $labels.instance }} for 5 minutes. be careful..."

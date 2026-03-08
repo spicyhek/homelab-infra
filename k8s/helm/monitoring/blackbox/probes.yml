@@ -1,0 +1,39 @@
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: probe-brendanmanley
+  namespace: monitoring
+  labels:
+    release: mon
+spec:
+  interval: 30s
+  module: http_2xx
+  prober:
+    url: blackbox-prometheus-blackbox-exporter.monitoring.svc.cluster.local:9115
+  targets:
+    staticConfig:
+      static:
+        - https://brendanmanley.com
+        - https://grafana.brendanmanley.com
+        - https://status.brendanmanley.com
+        - https://nids.brendanmanley.com
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: probe-dns
+  namespace: monitoring
+  labels:
+    release: mon
+spec:
+  interval: 60s
+  module: dns
+  prober:
+    url: blackbox-prometheus-blackbox-exporter.monitoring.svc.cluster.local:9115
+  targets:
+    staticConfig:
+      static:
+        - brendanmanley.com
+        - grafana.brendanmanley.com
+        - status.brendanmanley.com
+        - nids.brendanmanley.com
