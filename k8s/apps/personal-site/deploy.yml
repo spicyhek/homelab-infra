@@ -9,14 +9,17 @@ spec:
     matchLabels:
       app: personal-site
   template:
+    spec:
+      nodeSelector:
+        node-type: worker
     metadata:
       labels:
         app: personal-site
     spec:
       containers:
         - name: web
-          image: personal-site:1.0
-          imagePullPolicy: IfNotPresent
+          image: ghcr.io/spicyhek/personal-site:1.0
+          imagePullPolicy: Always
           ports:
             - containerPort: 80
           resources:

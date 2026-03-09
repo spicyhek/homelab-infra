@@ -9,6 +9,9 @@ spec:
     matchLabels:
       app: cloudflared
   template:
+    spec:
+      nodeSelector:
+        node-type: worker
     metadata:
       labels:
         app: cloudflared

@@ -26,6 +26,9 @@ singleBinary:
   nodeSelector:
     observability: "heavy"
 
+chunksCache:
+  enabled: false
+
 simpleScalable:
   replicas: 0
 
