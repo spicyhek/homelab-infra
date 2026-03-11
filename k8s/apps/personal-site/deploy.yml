@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
         - name: web
-          image: ghcr.io/spicyhek/personal-site:1.0
+          image: ghcr.io/spicyhek/personal-site:1.1
           imagePullPolicy: Always
           ports:
             - containerPort: 80
