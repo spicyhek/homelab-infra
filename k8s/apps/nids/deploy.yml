@@ -4,7 +4,7 @@ metadata:
   name: nids-config
   namespace: default
 data:
-  PORT: "8080"
+  PORT: "80"
   NIDS_DB_PATH: /data/nids.sqlite3
   NIDS_MODEL_PATH: /app/cicids2018_dense_model.keras
   NIDS_SCALER_PATH: /app/scaler.joblib
@@ -34,8 +34,7 @@ metadata:
   name: nids
   namespace: default
 spec:
-  # SQLite-backed first release; move to a shared datastore before scaling horizontally.
-  replicas: 1
+  replicas: 1 #SQLite so no replicas
   strategy:
     type: Recreate
   selector:
@@ -47,13 +46,13 @@ spec:
         app: nids
     spec:
       nodeSelector:
-        node-type: worker
+        node-type: worker-lowmem
       containers:
         - name: web
           image: ghcr.io/spicyhek/mynids:latest
           imagePullPolicy: Always
           ports:
-            - containerPort: 8080
+            - containerPort: 80
           envFrom:
             - configMapRef:
                 name: nids-config
@@ -66,13 +65,13 @@ spec:
           readinessProbe:
             httpGet:
               path: /healthz
-              port: 8080
+              port: 80
             initialDelaySeconds: 10
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /healthz
-              port: 8080
+              port: 80
             initialDelaySeconds: 20
             periodSeconds: 20
           volumeMounts:
@@ -101,6 +100,6 @@ spec:
   ports:
     - name: http
       port: 80
-      targetPort: 8080
+      targetPort: 80
   type: ClusterIP
 

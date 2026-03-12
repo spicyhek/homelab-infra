@@ -29,7 +29,7 @@ spec:
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
       nodeSelector:
-        node-type: worker
+        kubernetes.io/hostname: homelab-control-plane
       containers:
         - name: zeek
           image: zeek/zeek:latest
