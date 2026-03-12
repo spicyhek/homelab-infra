@@ -1,34 +1,94 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nids-config
+  namespace: default
+data:
+  PORT: "8080"
+  NIDS_DB_PATH: /data/nids.sqlite3
+  NIDS_MODEL_PATH: /app/cicids2018_dense_model.keras
+  NIDS_SCALER_PATH: /app/scaler.joblib
+  NIDS_FEATURE_ORDER_PATH: /app/feature_order.json
+  NIDS_LABEL_MAP_PATH: /app/label_map.json
+  NIDS_LABEL_ENCODER_PATH: /app/label_encoder.joblib
+  NIDS_PUBLIC_WINDOW_MINUTES: "60"
+  NIDS_MAX_HISTORY_HOURS: "168"
+  NIDS_RETENTION_HOURS: "168"
+  NIDS_DEFAULT_SOURCE_NAME: homelab-flow-bridge
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nids-data
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: nids
   namespace: default
 spec:
-  replicas: 2
+  # SQLite-backed first release; move to a shared datastore before scaling horizontally.
+  replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: nids
   template:
-    spec:
-      nodeSelector:
-        node-type: worker
     metadata:
       labels:
         app: nids
     spec:
+      nodeSelector:
+        node-type: worker
       containers:
         - name: web
-          image: ghcr.io/spicyhek/personal-site:1.0 #change when the app is made
+          image: ghcr.io/spicyhek/mynids:latest
           imagePullPolicy: Always
           ports:
-            - containerPort: 80
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: nids-config
+          env:
+            - name: NIDS_INGEST_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: nids-secrets
+                  key: NIDS_INGEST_TOKEN
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          volumeMounts:
+            - name: nids-data
+              mountPath: /data
           resources:
             requests:
-              cpu: "25m"
-              memory: "64Mi"
-            limits:
               cpu: "250m"
-              memory: "256Mi"
+              memory: "512Mi"
+            limits:
+              cpu: "1500m"
+              memory: "2Gi"
+      volumes:
+        - name: nids-data
+          persistentVolumeClaim:
+            claimName: nids-data
 ---
 apiVersion: v1
 kind: Service
@@ -41,6 +101,6 @@ spec:
   ports:
     - name: http
       port: 80
-      targetPort: 80
+      targetPort: 8080
   type: ClusterIP
 

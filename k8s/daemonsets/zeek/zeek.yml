@@ -1,0 +1,106 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: zeek-local-policy
+  namespace: default
+data:
+  local.zeek: |
+    @load policy/tuning/json-logs
+
+    redef LogAscii::use_json = T;
+    redef LogAscii::json_timestamps = JSON::TS_EPOCH;
+    redef Log::default_rotation_interval = 1hr;
+    redef Log::default_logdir = "/zeek-logs/current";
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: zeek
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: zeek
+  template:
+    metadata:
+      labels:
+        app: zeek
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      nodeSelector:
+        node-type: worker
+      containers:
+        - name: zeek
+          image: zeek/zeek:latest
+          imagePullPolicy: Always
+          securityContext:
+            privileged: true
+            capabilities:
+              add:
+                - NET_ADMIN
+                - NET_RAW
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - cp /config/local.zeek /opt/zeek/share/zeek/site/local.zeek && exec zeek -i any local
+          volumeMounts:
+            - name: zeek-policy
+              mountPath: /config
+              readOnly: true
+            - name: zeek-logs
+              mountPath: /zeek-logs
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+        - name: zeek-converter
+          image: ghcr.io/spicyhek/mynids:latest
+          imagePullPolicy: Always
+          command:
+            - python
+            - sensor/zeek_to_cicids.py
+          args:
+            - --log-path=/zeek-logs/current/conn.log
+            - --endpoint=http://nids.default.svc.cluster.local/api/internal/flows
+            - --state-file=/var/lib/nids-zeek/state/zeek-conn-state.json
+            - --source-prefix=zeek-worker
+            - --batch-size=100
+            - --poll-seconds=5
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: NIDS_INGEST_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: nids-secrets
+                  key: NIDS_INGEST_TOKEN
+          volumeMounts:
+            - name: zeek-logs
+              mountPath: /zeek-logs
+              readOnly: true
+            - name: zeek-state
+              mountPath: /var/lib/nids-zeek
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "128Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
+      volumes:
+        - name: zeek-policy
+          configMap:
+            name: zeek-local-policy
+        - name: zeek-logs
+          emptyDir: {}
+        - name: zeek-state
+          hostPath:
+            path: /var/lib/nids-zeek
+            type: DirectoryOrCreate
