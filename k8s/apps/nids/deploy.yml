@@ -46,7 +46,7 @@ spec:
         app: nids
     spec:
       nodeSelector:
-        kubernetes.io/hostname: homelab-worker1
+        kubernetes.io/hostname: homelab-control-plane
       containers:
         - name: web
           image: ghcr.io/spicyhek/mynids:latest
