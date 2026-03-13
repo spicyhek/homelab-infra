@@ -4,14 +4,14 @@ metadata:
   name: personal-site
   namespace: default
 spec:
-  replicas: 2
+  replicas: 3
   selector:
     matchLabels:
       app: personal-site
   template:
     spec:
       nodeSelector:
-        node-type: worker
+        node-type: worker-lowmem
     metadata:
       labels:
         app: personal-site

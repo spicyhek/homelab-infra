@@ -40,8 +40,12 @@ spec:
               add:
                 - NET_ADMIN
                 - NET_RAW
-          command: ["/usr/local/zeek/bin/zeek"]
-          args: ["-i", "eth0", "local"]
+          command:
+            - /usr/local/zeek/bin/zeek
+          args:
+            - -i
+            - eth0
+            - local
           volumeMounts:
             - name: zeek-local-policy
               mountPath: /usr/local/zeek/share/zeek/site/local.zeek
@@ -49,6 +53,42 @@ spec:
               readOnly: true
             - name: zeek-logs
               mountPath: /zeek-logs
+
+        - name: zeek-converter
+          image: ghcr.io/spicyhek/mynids:latest
+          imagePullPolicy: Always
+          command:
+            - python
+            - sensor/zeek_to_cicids.py
+          args:
+            - --log-path
+            - /zeek-logs/conn.log
+            - --endpoint
+            - http://nids.default.svc.cluster.local/api/internal/flows
+            - --state-file
+            - /var/lib/mynids/zeek-forwarder-state.json
+            - --source-prefix
+            - zeek-worker
+            - --poll-seconds
+            - "5"
+            - --batch-size
+            - "100"
+          env:
+            - name: NIDS_INGEST_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: nids-secrets
+                  key: NIDS_INGEST_TOKEN
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: zeek-logs
+              mountPath: /zeek-logs
+            - name: zeek-state
+              mountPath: /var/lib/mynids
+
       volumes:
         - name: zeek-local-policy
           configMap:
