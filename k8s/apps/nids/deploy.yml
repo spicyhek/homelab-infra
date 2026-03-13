@@ -6,11 +6,11 @@ metadata:
 data:
   PORT: "80"
   NIDS_DB_PATH: /data/nids.sqlite3
-  NIDS_MODEL_PATH: /app/cicids2018_dense_model.keras
-  NIDS_SCALER_PATH: /app/scaler.joblib
-  NIDS_FEATURE_ORDER_PATH: /app/feature_order.json
-  NIDS_LABEL_MAP_PATH: /app/label_map.json
-  NIDS_LABEL_ENCODER_PATH: /app/label_encoder.joblib
+  NIDS_MODEL_PATH: ~/projects/mynids/cicids2018_dense_model.keras
+  NIDS_SCALER_PATH: ~/projects/mynids/scaler.joblib
+  NIDS_FEATURE_ORDER_PATH: ~/projects/mynids/feature_order.json
+  NIDS_LABEL_MAP_PATH: ~/projects/mynids/label_map.json
+  NIDS_LABEL_ENCODER_PATH: ~/projects/mynids/label_encoder.joblib
   NIDS_PUBLIC_WINDOW_MINUTES: "60"
   NIDS_MAX_HISTORY_HOURS: "168"
   NIDS_RETENTION_HOURS: "168"
@@ -100,6 +100,6 @@ spec:
   ports:
     - name: http
       port: 80
-      targetPort: 80
+      targetPort: 8080
   type: ClusterIP
 
