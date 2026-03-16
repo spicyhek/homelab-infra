@@ -11,7 +11,7 @@ spec:
   template:
     spec:
       nodeSelector:
-        node-type: worker
+        node-type: worker-lowmem
     metadata:
       labels:
         app: cloudflared

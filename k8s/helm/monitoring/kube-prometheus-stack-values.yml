@@ -1,3 +1,11 @@
+defaultRules:
+  create: true
+  rules:
+    kubeApiserverAvailability: false
+    kubeApiserverBurnrate: false
+    kubeApiserverHistogram: false
+    kubeApiserverSlos: false
+
 grafana:
   startupProbe:
     httpGet:
@@ -35,7 +43,7 @@ grafana:
       cpu: 25m
       memory: 256Mi
     limits:
-      cpu: 500m
+      cpu: 450m
       memory: 512Mi
 
 prometheus:
