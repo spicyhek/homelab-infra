@@ -2,5 +2,5 @@ resources:
   - deploy.yml
 
 images:
-  - name: ghcr.io/spicyhek/mynids
+  - name: ghcr.io/spicyhek/personal-site
     newTag: sha-OLDTAG
