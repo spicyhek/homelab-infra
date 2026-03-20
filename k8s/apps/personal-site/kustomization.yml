@@ -3,4 +3,4 @@ resources:
 
 images:
   - name: ghcr.io/spicyhek/personal-site
-    newTag: sha-cbadb985190387977a0a42df8bddfe32d2fde8a2
+    newTag: sha-87c87631125e784a8db81d936a49832decf0f7a8
