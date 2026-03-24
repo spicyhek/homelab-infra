@@ -12,8 +12,8 @@ data:
   NIDS_LABEL_MAP_PATH: /app/label_map.json
   NIDS_LABEL_ENCODER_PATH: /app/label_encoder.joblib
   NIDS_PUBLIC_WINDOW_MINUTES: "60"
-  NIDS_MAX_HISTORY_HOURS: "168"
-  NIDS_RETENTION_HOURS: "168"
+  NIDS_MAX_HISTORY_HOURS: "672"
+  NIDS_RETENTION_HOURS: "672"
   NIDS_DEFAULT_SOURCE_NAME: homelab-flow-bridge
 ---
 apiVersion: v1
