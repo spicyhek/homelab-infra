@@ -10,7 +10,7 @@ spec:
     - name: blackbox.rules
       rules:
         - alert: EndpointDown
-          expr: probe_success == 0
+          expr: probe_success{dns_name=""} == 0
           for: 1m
           labels:
             severity: critical
@@ -18,8 +18,17 @@ spec:
             summary: "Endpoint down: {{ $labels.instance }}"
             description: "Blackbox probe is failing for {{ $labels.instance }} for 1 minute. do something!"
 
+        - alert: DNSLookupFailed
+          expr: probe_success{dns_name!=""} == 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "DNS lookup failed: {{ $labels.dns_name }}"
+            description: "{{ $labels.instance }} could not resolve {{ $labels.dns_name }} for 1 minute."
+
         - alert: EndpointSlow
-          expr: probe_duration_seconds > 2
+          expr: probe_duration_seconds{dns_name=""} > 2
           for: 5m
           labels:
             severity: warning

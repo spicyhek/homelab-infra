@@ -27,13 +27,73 @@ metadata:
     release: mon
 spec:
   interval: 60s
-  module: dns
+  module: dns_brendanmanley_a
   prober:
     url: blackbox-prometheus-blackbox-exporter.monitoring.svc.cluster.local:9115
   targets:
     staticConfig:
+      labels:
+        dns_name: brendanmanley.com
       static:
-        - brendanmanley.com
-        - grafana.brendanmanley.com
-        - status.brendanmanley.com
-        - nids.brendanmanley.com
+        - 1.1.1.1:53
+        - 8.8.8.8:53
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: probe-dns-grafana
+  namespace: monitoring
+  labels:
+    release: mon
+spec:
+  interval: 60s
+  module: dns_grafana_a
+  prober:
+    url: blackbox-prometheus-blackbox-exporter.monitoring.svc.cluster.local:9115
+  targets:
+    staticConfig:
+      labels:
+        dns_name: grafana.brendanmanley.com
+      static:
+        - 1.1.1.1:53
+        - 8.8.8.8:53
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: probe-dns-status
+  namespace: monitoring
+  labels:
+    release: mon
+spec:
+  interval: 60s
+  module: dns_status_a
+  prober:
+    url: blackbox-prometheus-blackbox-exporter.monitoring.svc.cluster.local:9115
+  targets:
+    staticConfig:
+      labels:
+        dns_name: status.brendanmanley.com
+      static:
+        - 1.1.1.1:53
+        - 8.8.8.8:53
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: probe-dns-nids
+  namespace: monitoring
+  labels:
+    release: mon
+spec:
+  interval: 60s
+  module: dns_nids_a
+  prober:
+    url: blackbox-prometheus-blackbox-exporter.monitoring.svc.cluster.local:9115
+  targets:
+    staticConfig:
+      labels:
+        dns_name: nids.brendanmanley.com
+      static:
+        - 1.1.1.1:53
+        - 8.8.8.8:53
