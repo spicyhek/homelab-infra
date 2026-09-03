@@ -3,4 +3,4 @@ resources:
 
 images:
   - name: ghcr.io/spicyhek/homelab-hosted-personal-site
-    newTag: sha-6f93b51f26d488e1382e5220bdc0cc1c28a49545
+    newTag: sha-408ded7ccbc10606b57f6c124031b39d9b4ff150
