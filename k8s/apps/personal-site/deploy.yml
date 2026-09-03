@@ -9,13 +9,12 @@ spec:
     matchLabels:
       app: personal-site
   template:
-    spec:
-      nodeSelector:
-        node-type: worker-lowmem
     metadata:
       labels:
         app: personal-site
     spec:
+      nodeSelector:
+        node-type: worker-lowmem
       containers:
         - name: web
           image: ghcr.io/spicyhek/homelab-hosted-personal-site
