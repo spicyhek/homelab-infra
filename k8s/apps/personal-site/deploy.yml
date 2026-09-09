@@ -13,8 +13,13 @@ spec:
       labels:
         app: personal-site
     spec:
-      nodeSelector:
-        node-type: worker-lowmem
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: personal-site
       containers:
         - name: web
           image: ghcr.io/spicyhek/homelab-hosted-personal-site

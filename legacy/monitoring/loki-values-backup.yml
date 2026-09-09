@@ -1,0 +1,33 @@
+backend:
+  replicas: 0
+chunksCache:
+  enabled: false
+deploymentMode: SingleBinary
+loki:
+  auth_enabled: false
+  commonConfig:
+    replication_factor: 1
+  schemaConfig:
+    configs:
+    - from: "2026-01-01"
+      index:
+        period: 24h
+        prefix: loki_index_
+      object_store: filesystem
+      schema: v13
+      store: tsdb
+  storage:
+    type: filesystem
+read:
+  replicas: 0
+simpleScalable:
+  replicas: 0
+singleBinary:
+  nodeSelector:
+    observability: heavy
+  persistence:
+    enabled: true
+    size: 10Gi
+  replicas: 1
+write:
+  replicas: 0
