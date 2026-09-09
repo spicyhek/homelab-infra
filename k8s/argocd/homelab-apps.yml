@@ -1,19 +1,19 @@
-  # cd for cd configurations
-  apiVersion: argoproj.io/v1alpha1
-  kind: Application
-  metadata:
-    name: homelab-apps
+# CD for CD configurations
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: homelab-apps
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/spicyhek/homelab-infra.git
+    targetRevision: main
+    path: k8s/argocd/applications
+  destination:
+    server: https://kubernetes.default.svc
     namespace: argocd
-  spec:
-    project: default
-    source:
-      repoURL: https://github.com/spicyhek/homelab-infra.git
-      targetRevision: main
-      path: k8s/argocd/applications
-    destination:
-      server: https://kubernetes.default.svc
-      namespace: argocd
-    syncPolicy:
-      automated:
-        prune: true
-        selfHeal: true
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
