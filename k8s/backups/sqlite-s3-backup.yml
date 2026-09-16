@@ -5,15 +5,26 @@ metadata:
   namespace: default
 spec:
   schedule: "0 * * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
+      activeDeadlineSeconds: 900
+      backoffLimit: 1
       template:
         spec:
+          automountServiceAccountToken: false
+          securityContext:
+            seccompProfile:
+              type: RuntimeDefault
           containers:
             - name: backup
-              image: alpine:3.20
+              image: alpine:3.24.1
+              imagePullPolicy: IfNotPresent
+              securityContext:
+                allowPrivilegeEscalation: false
               env:
                 - name: AWS_ACCESS_KEY_ID
                   valueFrom:
@@ -27,34 +38,97 @@ spec:
                       key: AWS_SECRET_ACCESS_KEY
                 - name: AWS_DEFAULT_REGION
                   value: us-west-1
+                - name: AWS_EC2_METADATA_DISABLED
+                  value: "true"
+                - name: AWS_RETRY_MODE
+                  value: standard
+                - name: AWS_MAX_ATTEMPTS
+                  value: "5"
+                - name: S3_BUCKET
+                  value: homelab-backups-062700375181-us-west-1-an
+                - name: S3_PREFIX
+                  value: sqlite-backups
               command:
                 - /bin/sh
                 - -c
                 - |
                   set -eu
+                  umask 077
 
+                  on_exit() {
+                    exit_code=$?
+                    if [ "$exit_code" -ne 0 ]; then
+                      echo "Backup failed with exit code $exit_code" >&2
+                    fi
+                  }
+                  trap on_exit EXIT
+
+                  echo "Installing backup tools"
                   apk add --no-cache sqlite aws-cli gzip
 
-                  TIMESTAMP=$(date +%Y-%m-%d-%H-%M-%S)
+                  TIMESTAMP=$(date -u +%Y-%m-%d-%H-%M-%SZ)
                   SRC_DB="/data/nids.sqlite3"
                   BACKUP_DB="/tmp/nids-${TIMESTAMP}.sqlite3"
                   BACKUP_GZ="${BACKUP_DB}.gz"
-                  S3_PATH="s3://homelab-backups-062700375181-us-west-1-an/sqlite-backups/$(basename "$BACKUP_GZ")"
+                  S3_PATH="s3://${S3_BUCKET}/${S3_PREFIX}/$(basename "$BACKUP_GZ")"
+
+                  if [ ! -s "$SRC_DB" ]; then
+                    echo "Source database is missing or empty: $SRC_DB" >&2
+                    exit 1
+                  fi
+
+                  echo "Validating AWS credentials"
+                  aws sts get-caller-identity --query Account --output text >/dev/null
 
                   echo "Creating SQLite backup from $SRC_DB"
-                  sqlite3 "$SRC_DB" ".backup '$BACKUP_DB'"
+                  BACKUP_ATTEMPT=1
+                  BACKUP_ATTEMPTS=5
+                  while [ "$BACKUP_ATTEMPT" -le "$BACKUP_ATTEMPTS" ]; do
+                    rm -f "$BACKUP_DB"
+                    if sqlite3 "$SRC_DB" <<SQL
+                  .timeout 60000
+                  .backup '$BACKUP_DB'
+                  SQL
+                    then
+                      break
+                    fi
+
+                    if [ "$BACKUP_ATTEMPT" -eq "$BACKUP_ATTEMPTS" ]; then
+                      echo "SQLite remained locked after $BACKUP_ATTEMPTS attempts" >&2
+                      exit 1
+                    fi
+
+                    BACKUP_ATTEMPT=$((BACKUP_ATTEMPT + 1))
+                    echo "SQLite is busy; retrying backup (attempt $BACKUP_ATTEMPT/$BACKUP_ATTEMPTS)"
+                    sleep 5
+                  done
+
+                  echo "Checking SQLite backup integrity"
+                  INTEGRITY_RESULT=$(sqlite3 "$BACKUP_DB" "PRAGMA quick_check;")
+                  if [ "$INTEGRITY_RESULT" != "ok" ]; then
+                    echo "SQLite integrity check failed: $INTEGRITY_RESULT" >&2
+                    exit 1
+                  fi
 
                   echo "Compressing backup"
-                  gzip "$BACKUP_DB"
+                  gzip -9 "$BACKUP_DB"
 
                   echo "Uploading to $S3_PATH"
-                  aws s3 cp "$BACKUP_GZ" "$S3_PATH"
+                  aws s3 cp "$BACKUP_GZ" "$S3_PATH" --only-show-errors --sse AES256
 
                   echo "Backup complete"
               volumeMounts:
                 - name: nids-data
                   mountPath: /data
-          restartPolicy: OnFailure
+                  readOnly: true
+              resources:
+                requests:
+                  cpu: "25m"
+                  memory: "64Mi"
+                limits:
+                  cpu: "500m"
+                  memory: "512Mi"
+          restartPolicy: Never
           volumes:
             - name: nids-data
               persistentVolumeClaim:
