@@ -1,0 +1,30 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ListSqliteBackups",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::homelab-backups-062700375181-us-west-1-an",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "sqlite-backups",
+            "sqlite-backups/*"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "ReadAndWriteSqliteBackups",
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:GetObject",
+        "s3:AbortMultipartUpload",
+        "s3:ListMultipartUploadParts"
+      ],
+      "Resource": "arn:aws:s3:::homelab-backups-062700375181-us-west-1-an/sqlite-backups/*"
+    }
+  ]
+}
