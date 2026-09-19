@@ -4,3 +4,12 @@ k3s.yml
 node-token
 *.pem
 *.key
+
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+*.tfvars
+*.auto.tfvars
