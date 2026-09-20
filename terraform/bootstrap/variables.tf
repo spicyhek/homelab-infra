@@ -9,3 +9,8 @@ variable "state_bucket_prefix" {
   type        = string
   default     = "homelab-reliability-tfstate-"
 }
+
+variable "aws_account_id" {
+  type    = string
+  default = "062700375181"
+}
