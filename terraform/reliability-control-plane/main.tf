@@ -155,13 +155,13 @@ resource "aws_lambda_permission" "backup_events" {
 resource "aws_cloudwatch_metric_alarm" "health" {
   for_each            = local.metrics
   alarm_name          = "homelab-${each.value}"
-  alarm_description   = "${each.value} has failed for five consecutive minutes."
+  alarm_description   = "${each.value} has failed for two consecutive minutes."
   namespace           = local.metric_namespace
   metric_name         = each.value
   statistic           = "Minimum"
   period              = 60
-  evaluation_periods  = 5
-  datapoints_to_alarm = 5
+  evaluation_periods  = 2
+  datapoints_to_alarm = 2
   threshold           = 1
   comparison_operator = "LessThanThreshold"
   treat_missing_data  = "breaching"
