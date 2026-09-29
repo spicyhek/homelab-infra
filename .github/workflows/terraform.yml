@@ -1,0 +1,82 @@
+name: Terraform
+
+on:
+  pull_request:
+    paths:
+      - "terraform/reliability-control-plane/**"
+      - ".github/workflows/terraform.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "terraform/reliability-control-plane/**"
+      - ".github/workflows/terraform.yml"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: terraform-${{ github.event_name == 'push' && 'production' || github.run_id }}
+  cancel-in-progress: false
+
+env:
+  TF_IN_AUTOMATION: true
+  AWS_REGION: us-west-1
+  TF_VAR_site_marker: ${{ secrets.SITE_MARKER }}
+  TF_VAR_nids_health_url: ${{ vars.NIDS_HEALTH_URL }}
+  TF_VAR_backup_bucket: ${{ vars.BACKUP_BUCKET }}
+  TF_VAR_alert_email_addresses: '["${{ secrets.ALERT_EMAIL }}"]'
+
+jobs:
+  terraform:
+    name: Terraform ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    environment: production
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: reliability-control-plane
+            path: terraform/reliability-control-plane
+
+    defaults:
+      run:
+        working-directory: ${{ matrix.path }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.16.0
+
+      - name: Terraform format check
+        run: terraform fmt -check -recursive
+        working-directory: terraform
+
+      - name: Terraform init
+        run: terraform init -input=false
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform plan
+        run: |
+          terraform plan \
+            -input=false \
+            -no-color \
+            -out=tfplan
+
+      - name: Terraform apply
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: terraform apply -input=false -auto-approve tfplan
