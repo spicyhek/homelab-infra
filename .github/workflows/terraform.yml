@@ -27,6 +27,7 @@ env:
   TF_VAR_nids_health_url: ${{ vars.NIDS_HEALTH_URL }}
   TF_VAR_backup_bucket: ${{ vars.BACKUP_BUCKET }}
   TF_VAR_alert_email_addresses: '["${{ secrets.ALERT_EMAIL }}"]'
+  TF_VAR_backup_prefix: ${{ vars.BACKUP_PREFIX }}
 
 jobs:
   terraform:

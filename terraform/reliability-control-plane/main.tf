@@ -4,8 +4,34 @@ locals {
   metric_namespace = "Homelab/Reliability"
   backup_enabled   = var.backup_bucket != null && var.backup_bucket != ""
   metrics = merge(
-    { site = "SiteHealthy", origin = "OriginHealthy", nids = "NidsHealthy" },
-    local.backup_enabled ? { backup = "BackupHealthy" } : {}
+    {
+      site = {
+        name                = "SiteHealthy"
+        period              = 60
+        evaluation_periods  = 2
+        datapoints_to_alarm = 2
+      }
+      origin = {
+        name                = "OriginHealthy"
+        period              = 60
+        evaluation_periods  = 2
+        datapoints_to_alarm = 2
+      }
+      nids = {
+        name                = "NidsHealthy"
+        period              = 60
+        evaluation_periods  = 2
+        datapoints_to_alarm = 2
+      }
+    },
+    local.backup_enabled ? {
+      backup = {
+        name                = "BackupHealthy"
+        period              = 3600
+        evaluation_periods  = 1
+        datapoints_to_alarm = 1
+      }
+    } : {}
   )
   origin_status_url = coalesce(var.origin_status_url, "${trimsuffix(var.site_url, "/")}/api/status")
 }
@@ -133,7 +159,7 @@ resource "aws_lambda_permission" "probe_events" {
 resource "aws_cloudwatch_event_rule" "backup" {
   count               = local.backup_enabled ? 1 : 0
   name                = "homelab-reliability-backup-weekly"
-  schedule_expression = "rate(7 days)"
+  schedule_expression = "rate(1 hour)"
 }
 
 resource "aws_cloudwatch_event_target" "backup" {
@@ -154,14 +180,14 @@ resource "aws_lambda_permission" "backup_events" {
 
 resource "aws_cloudwatch_metric_alarm" "health" {
   for_each            = local.metrics
-  alarm_name          = "homelab-${each.value}"
-  alarm_description   = "${each.value} has failed for two consecutive minutes."
+  alarm_name          = "homelab-${each.value.name}"
+  alarm_description   = "${each.value.name} has failed its health check for ${each.value.evaluation_periods} consecutive periods of ${each.value.period} seconds."
   namespace           = local.metric_namespace
-  metric_name         = each.value
+  metric_name         = each.value.name
   statistic           = "Minimum"
-  period              = 60
-  evaluation_periods  = 2
-  datapoints_to_alarm = 2
+  period              = each.value.period
+  evaluation_periods  = each.value.evaluation_periods
+  datapoints_to_alarm = each.value.datapoints_to_alarm
   threshold           = 1
   comparison_operator = "LessThanThreshold"
   treat_missing_data  = "breaching"
