@@ -28,8 +28,8 @@ locals {
       backup = {
         name                = "BackupHealthy"
         period              = 3600
-        evaluation_periods  = 1
-        datapoints_to_alarm = 1
+        evaluation_periods  = 2
+        datapoints_to_alarm = 2
       }
     } : {}
   )
@@ -112,13 +112,16 @@ resource "aws_iam_role_policy" "backup" {
 }
 
 resource "aws_lambda_function" "backup" {
-  count            = local.backup_enabled ? 1 : 0
-  function_name    = "homelab-reliability-backup"
-  role             = aws_iam_role.backup[0].arn
-  handler          = "handler.lambda_handler"
-  runtime          = "python3.12"
-  timeout          = 60
-  memory_size      = 256
+  count         = local.backup_enabled ? 1 : 0
+  function_name = "homelab-reliability-backup"
+  role          = aws_iam_role.backup[0].arn
+  handler       = "handler.lambda_handler"
+  runtime       = "python3.12"
+  timeout       = 60
+  memory_size   = 256
+  ephemeral_storage {
+    size = var.backup_ephemeral_storage_mb
+  }
   filename         = data.archive_file.backup[0].output_path
   source_code_hash = data.archive_file.backup[0].output_base64sha256
   environment { variables = {
@@ -158,7 +161,7 @@ resource "aws_lambda_permission" "probe_events" {
 
 resource "aws_cloudwatch_event_rule" "backup" {
   count               = local.backup_enabled ? 1 : 0
-  name                = "homelab-reliability-backup-weekly"
+  name                = "homelab-reliability-backup-hourly"
   schedule_expression = "rate(1 hour)"
 }
 

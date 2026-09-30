@@ -44,6 +44,11 @@ variable "backup_max_age_seconds" {
   type    = number
   default = 7200
 }
+variable "backup_ephemeral_storage_mb" {
+  description = "Temporary storage for downloading and validating a backup in Lambda"
+  type        = number
+  default     = 2048
+}
 variable "alert_email_addresses" {
   type    = set(string)
   default = []
