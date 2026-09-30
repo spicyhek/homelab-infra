@@ -8,6 +8,11 @@ variable "aws_account_id" {
   default = "062700375181"
 }
 
+variable "expected_cluster_nodes" {
+  description = "Kubernetes node names that must exist and report Ready"
+  type        = set(string)
+}
+
 variable "site_url" {
   type    = string
   default = "https://brendanmanley.com"

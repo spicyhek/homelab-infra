@@ -87,14 +87,14 @@ resource "aws_lambda_function" "probe" {
   filename         = data.archive_file.probe.output_path
   source_code_hash = data.archive_file.probe.output_base64sha256
   environment { variables = {
-    SITE_URL         = var.site_url, 
-    SITE_MARKER = var.site_marker, 
-    ORIGIN_STATUS_URL = local.origin_status_url,
-    NIDS_HEALTH_URL  = var.nids_health_url, 
-    MAX_SNAPSHOT_AGE_SECONDS = tostring(var.max_snapshot_age_seconds),
-    METRIC_NAMESPACE = local.metric_namespace
+    SITE_URL                    = var.site_url,
+    SITE_MARKER                 = var.site_marker,
+    ORIGIN_STATUS_URL           = local.origin_status_url,
+    NIDS_HEALTH_URL             = var.nids_health_url,
+    MAX_SNAPSHOT_AGE_SECONDS    = tostring(var.max_snapshot_age_seconds),
+    METRIC_NAMESPACE            = local.metric_namespace
     EXPECTED_CLUSTER_NODES_JSON = jsonencode(var.expected_cluster_nodes)
-    
+
   } }
   depends_on = [aws_cloudwatch_log_group.probe]
 }
