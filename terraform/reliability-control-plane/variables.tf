@@ -13,8 +13,8 @@ variable "expected_cluster_nodes" {
   type        = set(string)
   default = [
     "homelab-control-plane",
-    "homelab-worker-1",
-    "homelab-worker-2",
+    "homelab-worker1",
+    "homelab-worker2",
   ]
 }
 
