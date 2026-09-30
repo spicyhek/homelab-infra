@@ -7,13 +7,36 @@ import urllib.request
 import boto3
 
 cloudwatch = boto3.client("cloudwatch")
-METRICS = {"site": "SiteHealthy", "origin": "OriginHealthy", "nids": "NidsHealthy"}
-
+METRICS = { "site": "SiteHealthy",
+            "origin": "OriginHealthy", 
+            "nids": "NidsHealthy",
+            "cluster": "ClusterHealthy"           
+    }
 
 def fetch(url):
     request = urllib.request.Request(url, headers={"User-Agent": "homelab-reliability-probe/1.0"})
     with urllib.request.urlopen(request, timeout=10) as response:
         return response.status, response.read()
+
+def check_cluster():
+    status, body = fetch(os.environ["ORIGIN_STATUS_URL"])
+    if not 200 <= status < 300:
+        return False
+
+    payload = json.loads(body)
+    expected_nodes = set(json.loads(os.environ["EXPECTED_CLUSTER_NODES_JSON"]))
+    nodes = payload.get("nodes")
+
+    if not isinstance(nodes, list) or not expected_nodes:
+        return False
+
+    node_readiness = {
+        node.get("name"): node.get("ready") is True
+        for node in nodes
+        if isinstance(node, dict) and node.get("name")
+    }
+
+    return all(node_readiness.get(name, False) for name in expected_nodes)
 
 
 def check_site():
@@ -46,7 +69,11 @@ def check_nids():
 
 def lambda_handler(event, context):
     results = {}
-    for key, checker in (("site", check_site), ("origin", check_origin), ("nids", check_nids)):
+    for key, checker in (("site", check_site), 
+                         ("origin", check_origin), 
+                         ("nids", check_nids), 
+                         ("cluster", check_cluster)
+                        ):
         try:
             results[key] = checker()
         except Exception as error:
