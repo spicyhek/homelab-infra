@@ -11,6 +11,11 @@ variable "aws_account_id" {
 variable "expected_cluster_nodes" {
   description = "Kubernetes node names that must exist and report Ready"
   type        = set(string)
+  default = [
+    "homelab-control-plane",
+    "homelab-worker-1",
+    "homelab-worker-2",
+  ]
 }
 
 variable "site_url" {
