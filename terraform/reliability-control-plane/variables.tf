@@ -25,6 +25,7 @@ variable "site_url" {
 variable "site_marker" {
   description = "Stable text required in the homepage response"
   type        = string
+  sensitive   = true
 }
 variable "origin_status_url" {
   description = "Origin freshness snapshot endpoint"

@@ -14,7 +14,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
   group: terraform-${{ github.event_name == 'push' && 'production' || github.run_id }}
@@ -22,54 +21,83 @@ concurrency:
 
 env:
   TF_IN_AUTOMATION: true
+  TF_VERSION: 1.16.0
+  TF_WORKING_DIRECTORY: terraform/reliability-control-plane
   AWS_REGION: us-west-1
-  TF_VAR_site_marker: ${{ secrets.SITE_MARKER }}
-  TF_VAR_nids_health_url: ${{ vars.NIDS_HEALTH_URL }}
-  TF_VAR_backup_bucket: ${{ vars.BACKUP_BUCKET }}
-  TF_VAR_alert_email_addresses: '["${{ secrets.ALERT_EMAIL }}"]'
-  TF_VAR_backup_prefix: ${{ vars.BACKUP_PREFIX }}
 
 jobs:
-  terraform:
-    name: Terraform ${{ matrix.name }}
+  validate:
+    name: Terraform validation
     runs-on: ubuntu-latest
-    environment: production
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: reliability-control-plane
-            path: terraform/reliability-control-plane
-
-    defaults:
-      run:
-        working-directory: ${{ matrix.path }}
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.16.0
+          terraform_version: ${{ env.TF_VERSION }}
 
       - name: Terraform format check
         run: terraform fmt -check -recursive
         working-directory: terraform
 
-      - name: Terraform init
-        run: terraform init -input=false
+      - name: Terraform init without backend
+        run: terraform init -backend=false -input=false
+        working-directory: ${{ env.TF_WORKING_DIRECTORY }}
 
       - name: Terraform validate
         run: terraform validate
+        working-directory: ${{ env.TF_WORKING_DIRECTORY }}
+
+  plan:
+    name: Terraform plan
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      plan-key: ${{ steps.plan-key.outputs.key }}
+
+    env:
+      TF_VAR_site_marker: ${{ secrets.SITE_MARKER }}
+      TF_VAR_nids_health_url: ${{ vars.NIDS_HEALTH_URL }}
+      TF_VAR_backup_bucket: ${{ vars.BACKUP_BUCKET }}
+      TF_VAR_alert_email_addresses: '["${{ secrets.ALERT_EMAIL }}"]'
+      TF_VAR_backup_prefix: ${{ vars.BACKUP_PREFIX }}
+      TF_PLAN_BUCKET: ${{ vars.TF_PLAN_BUCKET }}
+
+    defaults:
+      run:
+        working-directory: ${{ env.TF_WORKING_DIRECTORY }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS plan credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Check plan storage configuration
+        run: |
+          if [ -z "${TF_PLAN_BUCKET}" ]; then
+            echo "Repository variable TF_PLAN_BUCKET is required" >&2
+            exit 1
+          fi
+
+      - name: Terraform init
+        run: terraform init -input=false
 
       - name: Terraform plan
         run: |
@@ -78,6 +106,68 @@ jobs:
             -no-color \
             -out=tfplan
 
+      - name: Package initialized plan
+        run: tar -czf tfapply.tgz tfplan .terraform .terraform.lock.hcl
+
+      - name: Set plan object key
+        id: plan-key
+        run: echo "key=ci-plans/${GITHUB_RUN_ID}/${GITHUB_RUN_ATTEMPT}/${GITHUB_SHA}.tgz" >> "${GITHUB_OUTPUT}"
+
+      - name: Save plan in private S3 storage
+        env:
+          PLAN_KEY: ${{ steps.plan-key.outputs.key }}
+        run: |
+          aws s3 cp tfapply.tgz "s3://${TF_PLAN_BUCKET}/${PLAN_KEY}" \
+            --only-show-errors \
+            --sse AES256
+
+  apply:
+    name: Terraform apply
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: plan
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      TF_VAR_site_marker: ${{ secrets.SITE_MARKER }}
+      TF_VAR_nids_health_url: ${{ vars.NIDS_HEALTH_URL }}
+      TF_VAR_backup_bucket: ${{ vars.BACKUP_BUCKET }}
+      TF_VAR_alert_email_addresses: '["${{ secrets.ALERT_EMAIL }}"]'
+      TF_VAR_backup_prefix: ${{ vars.BACKUP_PREFIX }}
+      TF_PLAN_BUCKET: ${{ vars.TF_PLAN_BUCKET }}
+      PLAN_KEY: ${{ needs.plan.outputs.plan-key }}
+
+    defaults:
+      run:
+        working-directory: ${{ env.TF_WORKING_DIRECTORY }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS apply credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Retrieve approved plan
+        run: aws s3 cp "s3://${TF_PLAN_BUCKET}/${PLAN_KEY}" tfapply.tgz --only-show-errors
+
+      - name: Restore initialized plan
+        run: tar -xzf tfapply.tgz
+
       - name: Terraform apply
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: terraform apply -input=false -auto-approve tfplan
+
+      - name: Remove saved plan
+        if: always()
+        run: aws s3 rm "s3://${TF_PLAN_BUCKET}/${PLAN_KEY}" --only-show-errors
