@@ -36,7 +36,7 @@ locals {
       backup = {
         name                = "BackupHealthy"
         period              = 3600
-        evaluation_periods  = 2
+        evaluation_periods  = 8
         datapoints_to_alarm = 2
       }
     } : {}
