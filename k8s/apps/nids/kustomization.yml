@@ -3,4 +3,4 @@ resources:
 
 images:
   - name: ghcr.io/spicyhek/mynids
-    newTag: sha-cce84c734fd292ee61fefcf1514ae6e92d512578
+    newTag: sha-2b0b1f0bd7f0827839e65b29f45f50e7b6f783e4
