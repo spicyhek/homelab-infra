@@ -8,8 +8,8 @@ locals {
       cluster = {
         name                = "ClusterHealthy"
         period              = 60
-        evaluation_periods  = 3
-        datapoints_to_alarm = 3
+        evaluation_periods  = 1
+        datapoints_to_alarm = 1
       }
     },
     {
@@ -36,8 +36,8 @@ locals {
       backup = {
         name                = "BackupHealthy"
         period              = 3600
-        evaluation_periods  = 8
-        datapoints_to_alarm = 2
+        evaluation_periods  = 3
+        datapoints_to_alarm = 3
       }
     } : {}
   )
