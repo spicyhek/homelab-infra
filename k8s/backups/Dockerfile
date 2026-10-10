@@ -1,0 +1,3 @@
+FROM alpine:3.24.1
+
+RUN apk add --no-cache sqlite aws-cli gzip

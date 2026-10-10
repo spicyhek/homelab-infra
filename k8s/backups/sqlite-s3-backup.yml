@@ -21,7 +21,7 @@ spec:
               type: RuntimeDefault
           containers:
             - name: backup
-              image: alpine:3.24.1
+              image: ghcr.io/spicyhek/sqlite-s3-backup:1.0
               imagePullPolicy: IfNotPresent
               securityContext:
                 allowPrivilegeEscalation: false
@@ -62,9 +62,6 @@ spec:
                     fi
                   }
                   trap on_exit EXIT
-
-                  echo "Installing backup tools"
-                  apk add --no-cache sqlite aws-cli gzip
 
                   TIMESTAMP=$(date -u +%Y-%m-%d-%H-%M-%SZ)
                   SRC_DB="/data/nids.sqlite3"
