@@ -31,3 +31,7 @@ made in Git and merged through via pull request. No using `kubectl apply` normal
 4. Argo CD detects Kubernetes changes on `main` and reconciles them.
 5. For the Terraform reliability control plane, GitHub Actions creates a plan
    after merge and applies that saved plan through the `production` environment once approved.
+
+## Operational records
+
+- [Postmortem: control-plane network failure and health-probe flapping](docs/postmortems/2026-10-16-control-plane-network-and-probe-flapping.md)
