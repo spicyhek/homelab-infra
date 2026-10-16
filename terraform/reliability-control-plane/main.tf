@@ -8,28 +8,28 @@ locals {
       cluster = {
         name                = "ClusterHealthy"
         period              = 60
-        evaluation_periods  = 1
-        datapoints_to_alarm = 1
+        evaluation_periods  = 2
+        datapoints_to_alarm = 2
       }
     },
     {
       site = {
         name                = "SiteHealthy"
         period              = 60
-        evaluation_periods  = 2
-        datapoints_to_alarm = 2
+        evaluation_periods  = 3
+        datapoints_to_alarm = 3
       }
       origin = {
         name                = "OriginHealthy"
         period              = 60
-        evaluation_periods  = 2
-        datapoints_to_alarm = 2
+        evaluation_periods  = 3
+        datapoints_to_alarm = 3
       }
       nids = {
         name                = "NidsHealthy"
         period              = 60
-        evaluation_periods  = 2
-        datapoints_to_alarm = 2
+        evaluation_periods  = 3
+        datapoints_to_alarm = 3
       }
     },
     local.backup_enabled ? {
