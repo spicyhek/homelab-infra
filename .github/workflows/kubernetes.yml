@@ -1,0 +1,140 @@
+name: Kubernetes
+
+on:
+  pull_request:
+    paths:
+      - "k8s/**"
+      - ".github/workflows/kubernetes.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "k8s/**"
+      - ".github/workflows/kubernetes.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kubernetes-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CRD_CATALOG_REVISION: 63669a570e231d4f1f8396d229a1de512bcf0a34
+  KUBECONFORM_VERSION: 0.8.0
+  KUBERNETES_VERSION: 1.36.4
+  KUSTOMIZE_VERSION: 5.8.3
+  YAMLLINT_VERSION: 1.38.0
+
+jobs:
+  yaml-lint:
+    name: YAML lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install yamllint
+        run: python -m pip install "yamllint==${YAMLLINT_VERSION}"
+
+      - name: Lint YAML
+        run: yamllint --config-file k8s/.yamllint.yml k8s .github/workflows/kubernetes.yml
+
+  validate-workload:
+    name: Validate ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: cloudflared
+            path: k8s/edge/cloudflared
+          - name: nids
+            path: k8s/apps/nids
+          - name: nids-backup
+            path: k8s/backups
+          - name: personal-site
+            path: k8s/apps/personal-site
+          - name: status-api
+            path: k8s/apps/status-api
+          - name: zeek
+            path: k8s/daemonsets/zeek
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Kustomize
+        shell: bash
+        run: |
+          curl --fail --location --silent --show-error \
+            "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv${KUSTOMIZE_VERSION}/kustomize_v${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" \
+            --output "${RUNNER_TEMP}/kustomize.tar.gz"
+          tar --extract --gzip \
+            --file "${RUNNER_TEMP}/kustomize.tar.gz" \
+            --directory "${RUNNER_TEMP}"
+          chmod +x "${RUNNER_TEMP}/kustomize"
+          echo "${RUNNER_TEMP}" >> "${GITHUB_PATH}"
+
+      - name: Install Kubeconform
+        shell: bash
+        run: |
+          curl --fail --location --silent --show-error \
+            "https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            --output "${RUNNER_TEMP}/kubeconform.tar.gz"
+          tar --extract --gzip \
+            --file "${RUNNER_TEMP}/kubeconform.tar.gz" \
+            --directory "${RUNNER_TEMP}"
+          chmod +x "${RUNNER_TEMP}/kubeconform"
+          echo "${RUNNER_TEMP}" >> "${GITHUB_PATH}"
+
+      - name: Render manifests
+        shell: bash
+        run: kustomize build "${{ matrix.path }}" > "${RUNNER_TEMP}/${{ matrix.name }}.yml"
+
+      - name: Validate manifests
+        shell: bash
+        run: |
+          kubeconform \
+            -kubernetes-version "${KUBERNETES_VERSION}" \
+            -strict \
+            -summary \
+            "${RUNNER_TEMP}/${{ matrix.name }}.yml"
+
+  validate-argocd:
+    name: Validate Argo CD applications
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Kubeconform
+        shell: bash
+        run: |
+          curl --fail --location --silent --show-error \
+            "https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            --output "${RUNNER_TEMP}/kubeconform.tar.gz"
+          tar --extract --gzip \
+            --file "${RUNNER_TEMP}/kubeconform.tar.gz" \
+            --directory "${RUNNER_TEMP}"
+          chmod +x "${RUNNER_TEMP}/kubeconform"
+          echo "${RUNNER_TEMP}" >> "${GITHUB_PATH}"
+
+      - name: Validate Argo CD applications
+        shell: bash
+        run: |
+          kubeconform \
+            -kubernetes-version "${KUBERNETES_VERSION}" \
+            -schema-location default \
+            -schema-location "https://raw.githubusercontent.com/datreeio/CRDs-catalog/${CRD_CATALOG_REVISION}/argoproj.io/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json" \
+            -strict \
+            -summary \
+            k8s/argocd/homelab-apps.yml \
+            k8s/argocd/applications

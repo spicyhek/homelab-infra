@@ -34,7 +34,7 @@ metadata:
   name: nids
   namespace: default
 spec:
-  replicas: 1 #SQLite so no replicas
+  replicas: 1 # SQLite so no replicas
   strategy:
     type: Recreate
   selector:
@@ -113,4 +113,3 @@ spec:
       port: 80
       targetPort: 8080
   type: ClusterIP
-
