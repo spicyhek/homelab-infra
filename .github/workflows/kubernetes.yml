@@ -18,10 +18,14 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  ALLOY_CHART_VERSION: 1.13.1
+  ALLOY_IMAGE_VERSION: v1.20.1
   CRD_CATALOG_REVISION: 63669a570e231d4f1f8396d229a1de512bcf0a34
+  HELM_VERSION: 3.22.1
   KUBECONFORM_VERSION: 0.8.0
   KUBERNETES_VERSION: 1.36.4
   KUSTOMIZE_VERSION: 5.8.3
+  NODE_EXPORTER_CHART_VERSION: 4.59.0
   YAMLLINT_VERSION: 1.38.0
 
 jobs:
@@ -103,6 +107,8 @@ jobs:
             path: k8s/apps/nids
           - name: nids-backup
             path: k8s/backups
+          - name: observability
+            path: k8s/observability
           - name: personal-site
             path: k8s/apps/personal-site
           - name: status-api
@@ -153,6 +159,91 @@ jobs:
             -summary \
             "${RUNNER_TEMP}/${{ matrix.name }}.yml"
 
+  validate-observability:
+    name: Validate observability charts
+    needs: changes
+    if: needs.changes.outputs.kubernetes == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Helm
+        shell: bash
+        run: |
+          curl --fail --location --silent --show-error \
+            "https://get.helm.sh/helm-v${HELM_VERSION}-linux-amd64.tar.gz" \
+            --output "${RUNNER_TEMP}/helm.tar.gz"
+          tar --extract --gzip \
+            --file "${RUNNER_TEMP}/helm.tar.gz" \
+            --directory "${RUNNER_TEMP}"
+          chmod +x "${RUNNER_TEMP}/linux-amd64/helm"
+          echo "${RUNNER_TEMP}/linux-amd64" >> "${GITHUB_PATH}"
+
+      - name: Install Kubeconform
+        shell: bash
+        run: |
+          curl --fail --location --silent --show-error \
+            "https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            --output "${RUNNER_TEMP}/kubeconform.tar.gz"
+          tar --extract --gzip \
+            --file "${RUNNER_TEMP}/kubeconform.tar.gz" \
+            --directory "${RUNNER_TEMP}"
+          chmod +x "${RUNNER_TEMP}/kubeconform"
+          echo "${RUNNER_TEMP}" >> "${GITHUB_PATH}"
+
+      - name: Add Helm repositories
+        shell: bash
+        run: |
+          helm repo add grafana https://grafana.github.io/helm-charts
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo update
+
+      - name: Render observability charts
+        shell: bash
+        run: |
+          helm template alloy grafana/alloy \
+            --namespace monitoring \
+            --version "${ALLOY_CHART_VERSION}" \
+            --values k8s/observability/alloy-values.yml \
+            > "${RUNNER_TEMP}/alloy.yml"
+          helm template node-exporter prometheus-community/prometheus-node-exporter \
+            --namespace monitoring \
+            --version "${NODE_EXPORTER_CHART_VERSION}" \
+            --values k8s/observability/node-exporter-values.yml \
+            > "${RUNNER_TEMP}/node-exporter.yml"
+
+      - name: Validate observability manifests
+        shell: bash
+        run: |
+          kubeconform \
+            -kubernetes-version "${KUBERNETES_VERSION}" \
+            -strict \
+            -summary \
+            "${RUNNER_TEMP}/alloy.yml" \
+            "${RUNNER_TEMP}/node-exporter.yml"
+
+      - name: Validate Alloy configuration
+        shell: bash
+        run: |
+          docker run --rm \
+            --env GRAFANA_CLOUD_PROMETHEUS_URL=https://prometheus.example.grafana.net/api/prom/push \
+            --env GRAFANA_CLOUD_PROMETHEUS_USERNAME=123456 \
+            --env GRAFANA_CLOUD_PROMETHEUS_PASSWORD=test-token \
+            --volume "${PWD}/k8s/observability/config.alloy:/etc/alloy/config.alloy:ro" \
+            "grafana/alloy:${ALLOY_IMAGE_VERSION}" \
+            fmt --test /etc/alloy/config.alloy
+          docker run --rm \
+            --env GRAFANA_CLOUD_PROMETHEUS_URL=https://prometheus.example.grafana.net/api/prom/push \
+            --env GRAFANA_CLOUD_PROMETHEUS_USERNAME=123456 \
+            --env GRAFANA_CLOUD_PROMETHEUS_PASSWORD=test-token \
+            --volume "${PWD}/k8s/observability/config.alloy:/etc/alloy/config.alloy:ro" \
+            "grafana/alloy:${ALLOY_IMAGE_VERSION}" \
+            validate /etc/alloy/config.alloy
+
   validate-argocd:
     name: Validate Argo CD applications
     needs: changes
@@ -195,6 +286,7 @@ jobs:
       - changes
       - yaml-lint
       - validate-workload
+      - validate-observability
       - validate-argocd
     if: always() && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -206,6 +298,7 @@ jobs:
           CHANGES_RESULT: ${{ needs.changes.result }}
           KUBERNETES_CHANGED: ${{ needs.changes.outputs.kubernetes }}
           LINT_RESULT: ${{ needs.yaml-lint.result }}
+          OBSERVABILITY_RESULT: ${{ needs.validate-observability.result }}
           WORKLOAD_RESULT: ${{ needs.validate-workload.result }}
         shell: bash
         run: |
@@ -217,6 +310,7 @@ jobs:
           if [[ "${KUBERNETES_CHANGED}" == "true" ]]; then
             if [[ "${LINT_RESULT}" != "success" || \
                   "${WORKLOAD_RESULT}" != "success" || \
+                  "${OBSERVABILITY_RESULT}" != "success" || \
                   "${ARGOCD_RESULT}" != "success" ]]; then
               echo "Kubernetes validation must pass" >&2
               exit 1

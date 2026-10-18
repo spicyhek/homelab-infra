@@ -1,0 +1,43 @@
+fullnameOverride: node-exporter
+
+prometheusScrape: false
+
+service:
+  enabled: false
+
+prometheus:
+  monitor:
+    enabled: false
+  podMonitor:
+    enabled: false
+
+serviceAccount:
+  automountServiceAccountToken: false
+
+rbac:
+  # This chart gates its dedicated ServiceAccount on rbac.create. It does not
+  # create a Role or ClusterRole when no Kubernetes API permissions are needed.
+  create: true
+
+hostNetwork: false
+hostPID: false
+
+podLabels:
+  observability.homelab/scrape: "true"
+
+extraArgs:
+  - --collector.disable-defaults
+  - --collector.cpu
+  - --collector.meminfo
+  - --collector.filesystem
+  - --collector.uname
+  - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run/containerd/.+|var/lib/docker/.+|var/lib/kubelet/.+)($|/)
+  - --collector.filesystem.fs-types-exclude=^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tracefs|erofs)$
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    cpu: 100m
+    memory: 64Mi
