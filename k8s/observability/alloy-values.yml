@@ -1,0 +1,76 @@
+fullnameOverride: alloy
+
+crds:
+  create: false
+
+alloy:
+  configMap:
+    create: false
+    name: alloy-config
+    key: config.alloy
+  enableReporting: false
+  envFrom:
+    - secretRef:
+        name: grafana-cloud-metrics
+  mounts:
+    extra:
+      - name: storage
+        mountPath: /tmp/alloy
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 192Mi
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+
+configReloader:
+  resources:
+    requests:
+      cpu: 5m
+      memory: 16Mi
+    limits:
+      cpu: 50m
+      memory: 32Mi
+
+controller:
+  type: deployment
+  replicas: 1
+  nodeSelector:
+    observability: heavy
+  volumes:
+    extra:
+      - name: storage
+        emptyDir: {}
+
+rbac:
+  create: true
+  namespaces:
+    - monitoring
+  rules:
+    - apiGroups:
+        - ""
+      resources:
+        - pods
+      verbs:
+        - get
+        - list
+        - watch
+
+service:
+  enabled: false
+
+serviceMonitor:
+  enabled: false
+
+ingress:
+  enabled: false

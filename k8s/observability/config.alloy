@@ -1,0 +1,70 @@
+discovery.kubernetes "node_exporter" {
+  role = "pod"
+
+  namespaces {
+    names = ["monitoring"]
+  }
+
+  selectors {
+    role  = "pod"
+    label = "observability.homelab/scrape=true"
+  }
+}
+
+discovery.relabel "node_exporter" {
+  targets = discovery.kubernetes.node_exporter.targets
+
+  rule {
+    action        = "keep"
+    source_labels = ["__meta_kubernetes_pod_container_port_name"]
+    regex         = "metrics"
+  }
+
+  rule {
+    action        = "keep"
+    source_labels = ["__meta_kubernetes_pod_phase"]
+    regex         = "Running"
+  }
+
+  rule {
+    action        = "replace"
+    source_labels = ["__meta_kubernetes_pod_node_name"]
+    target_label  = "instance"
+  }
+
+  rule {
+    action       = "replace"
+    replacement  = "homelab"
+    target_label = "cluster"
+  }
+}
+
+prometheus.scrape "node_exporter" {
+  targets         = discovery.relabel.node_exporter.output
+  forward_to      = [prometheus.relabel.node_exporter.receiver]
+  job_name        = "integrations/node_exporter"
+  scrape_interval = "60s"
+  scrape_timeout  = "10s"
+}
+
+prometheus.relabel "node_exporter" {
+  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+
+  rule {
+    action        = "keep"
+    source_labels = ["__name__", "mode", "mountpoint"]
+    separator     = ";"
+    regex         = "node_cpu_seconds_total;idle;|node_memory_(MemAvailable|MemTotal)_bytes;;|node_filesystem_(avail|size)_bytes;;/|node_uname_info;;|up;;"
+  }
+}
+
+prometheus.remote_write "grafana_cloud" {
+  endpoint {
+    url = sys.env("GRAFANA_CLOUD_PROMETHEUS_URL")
+
+    basic_auth {
+      username = sys.env("GRAFANA_CLOUD_PROMETHEUS_USERNAME")
+      password = sys.env("GRAFANA_CLOUD_PROMETHEUS_PASSWORD")
+    }
+  }
+}
