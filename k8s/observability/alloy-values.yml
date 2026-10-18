@@ -1,5 +1,9 @@
 fullnameOverride: alloy
 
+global:
+  podSecurityContext:
+    fsGroup: 473
+
 crds:
   create: false
 
@@ -30,6 +34,8 @@ alloy:
         - ALL
     readOnlyRootFilesystem: true
     runAsNonRoot: true
+    runAsGroup: 473
+    runAsUser: 473
     seccompProfile:
       type: RuntimeDefault
 
