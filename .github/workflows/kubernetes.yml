@@ -2,9 +2,6 @@ name: Kubernetes
 
 on:
   pull_request:
-    paths:
-      - "k8s/**"
-      - ".github/workflows/kubernetes.yml"
   push:
     branches:
       - main
@@ -14,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: kubernetes-${{ github.workflow }}-${{ github.ref }}
@@ -27,16 +25,60 @@ env:
   YAMLLINT_VERSION: 1.38.0
 
 jobs:
+  changes:
+    name: Detect Kubernetes changes
+    runs-on: ubuntu-latest
+    outputs:
+      kubernetes: ${{ steps.filter.outputs.result }}
+
+    steps:
+      - name: Detect relevant files
+        id: filter
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          result-encoding: string
+          script: |
+            if (context.eventName === "push") {
+              return "true";
+            }
+
+            const files = await github.paginate(
+              github.rest.pulls.listFiles,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.payload.pull_request.number,
+                per_page: 100,
+              },
+            );
+
+            if (files.length !== context.payload.pull_request.changed_files) {
+              throw new Error("GitHub returned an incomplete pull-request file list");
+            }
+
+            const changed = files.some(({ filename, previous_filename: previousFilename }) =>
+              [filename, previousFilename].filter(Boolean).some((path) =>
+                path.startsWith("k8s/") ||
+                path === ".github/workflows/kubernetes.yml"
+              )
+            );
+
+            return changed ? "true" : "false";
+
   yaml-lint:
     name: YAML lint
+    needs: changes
+    if: needs.changes.outputs.kubernetes == 'true'
     runs-on: ubuntu-latest
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.13"
 
@@ -48,6 +90,8 @@ jobs:
 
   validate-workload:
     name: Validate ${{ matrix.name }}
+    needs: changes
+    if: needs.changes.outputs.kubernetes == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -68,7 +112,9 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install Kustomize
         shell: bash
@@ -109,11 +155,15 @@ jobs:
 
   validate-argocd:
     name: Validate Argo CD applications
+    needs: changes
+    if: needs.changes.outputs.kubernetes == 'true'
     runs-on: ubuntu-latest
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install Kubeconform
         shell: bash
@@ -138,3 +188,37 @@ jobs:
             -summary \
             k8s/argocd/homelab-apps.yml \
             k8s/argocd/applications
+
+  required:
+    name: Kubernetes required
+    needs:
+      - changes
+      - yaml-lint
+      - validate-workload
+      - validate-argocd
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Confirm required Kubernetes checks passed
+        env:
+          ARGOCD_RESULT: ${{ needs.validate-argocd.result }}
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          KUBERNETES_CHANGED: ${{ needs.changes.outputs.kubernetes }}
+          LINT_RESULT: ${{ needs.yaml-lint.result }}
+          WORKLOAD_RESULT: ${{ needs.validate-workload.result }}
+        shell: bash
+        run: |
+          if [[ "${CHANGES_RESULT}" != "success" ]]; then
+            echo "Kubernetes change detection failed" >&2
+            exit 1
+          fi
+
+          if [[ "${KUBERNETES_CHANGED}" == "true" ]]; then
+            if [[ "${LINT_RESULT}" != "success" || \
+                  "${WORKLOAD_RESULT}" != "success" || \
+                  "${ARGOCD_RESULT}" != "success" ]]; then
+              echo "Kubernetes validation must pass" >&2
+              exit 1
+            fi
+          fi

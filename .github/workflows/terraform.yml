@@ -2,172 +2,463 @@ name: Terraform
 
 on:
   pull_request:
-    paths:
-      - "terraform/reliability-control-plane/**"
-      - ".github/workflows/terraform.yml"
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - closed
   push:
     branches:
       - main
     paths:
-      - "terraform/reliability-control-plane/**"
+      - "terraform/**"
       - ".github/workflows/terraform.yml"
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
-  group: terraform-${{ github.event_name == 'push' && 'production' || github.run_id }}
-  cancel-in-progress: false
+  group: terraform-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action != 'closed' }}
 
 env:
+  AWS_REGION: us-west-1
   TF_IN_AUTOMATION: true
   TF_VERSION: 1.16.0
-  TF_WORKING_DIRECTORY: terraform/reliability-control-plane
-  AWS_REGION: us-west-1
 
 jobs:
-  validate:
-    name: Terraform validation
+  changes:
+    name: Detect Terraform changes
     runs-on: ubuntu-latest
+    outputs:
+      terraform: ${{ steps.filter.outputs.result }}
+
+    steps:
+      - name: Detect relevant files
+        id: filter
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          result-encoding: string
+          script: |
+            if (context.eventName === "push") {
+              return "true";
+            }
+
+            const files = await github.paginate(
+              github.rest.pulls.listFiles,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.payload.pull_request.number,
+                per_page: 100,
+              },
+            );
+
+            if (files.length !== context.payload.pull_request.changed_files) {
+              throw new Error("GitHub returned an incomplete pull-request file list");
+            }
+
+            const changed = files.some(({ filename, previous_filename: previousFilename }) =>
+              [filename, previousFilename].filter(Boolean).some((path) =>
+                path.startsWith("terraform/") ||
+                path === ".github/workflows/terraform.yml"
+              )
+            );
+
+            return changed ? "true" : "false";
+
+  validate:
+    name: Terraform validation (${{ matrix.name }})
+    needs: changes
+    if: >-
+      github.event_name == 'push' ||
+      (github.event.action != 'closed' && needs.changes.outputs.terraform == 'true')
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: bootstrap
+            path: terraform/bootstrap
+          - name: reliability-control-plane
+            path: terraform/reliability-control-plane
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
 
       - name: Terraform format check
-        run: terraform fmt -check -recursive
-        working-directory: terraform
+        run: terraform fmt -check
+        working-directory: ${{ matrix.path }}
 
       - name: Terraform init without backend
-        run: terraform init -backend=false -input=false
-        working-directory: ${{ env.TF_WORKING_DIRECTORY }}
+        run: terraform init -backend=false -input=false -lockfile=readonly
+        working-directory: ${{ matrix.path }}
 
       - name: Terraform validate
         run: terraform validate
-        working-directory: ${{ env.TF_WORKING_DIRECTORY }}
+        working-directory: ${{ matrix.path }}
 
   plan:
     name: Terraform plan
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: validate
+    needs:
+      - changes
+      - validate
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.action != 'closed' &&
+      needs.changes.outputs.terraform == 'true' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
-    outputs:
-      plan-key: ${{ steps.plan-key.outputs.key }}
+      pull-requests: write
 
     env:
-      TF_VAR_site_marker: ${{ secrets.SITE_MARKER }}
-      TF_VAR_nids_health_url: ${{ vars.NIDS_HEALTH_URL }}
-      TF_VAR_backup_bucket: ${{ vars.BACKUP_BUCKET }}
-      TF_VAR_alert_email_addresses: '["${{ secrets.ALERT_EMAIL }}"]'
-      TF_VAR_backup_prefix: ${{ vars.BACKUP_PREFIX }}
+      PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
       TF_PLAN_BUCKET: ${{ vars.TF_PLAN_BUCKET }}
-
-    defaults:
-      run:
-        working-directory: ${{ env.TF_WORKING_DIRECTORY }}
+      TF_VAR_alert_email_addresses: '["${{ secrets.ALERT_EMAIL }}"]'
+      TF_VAR_backup_bucket: ${{ vars.BACKUP_BUCKET }}
+      TF_VAR_backup_prefix: ${{ vars.BACKUP_PREFIX }}
+      TF_VAR_nids_health_url: ${{ vars.NIDS_HEALTH_URL }}
+      TF_VAR_site_marker: ${{ secrets.SITE_MARKER }}
 
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      - name: Check out reviewed merge
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
 
       - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
 
       - name: Configure AWS plan credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
-          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
 
       - name: Check plan storage configuration
+        shell: bash
         run: |
-          if [ -z "${TF_PLAN_BUCKET}" ]; then
+          if [[ -z "${TF_PLAN_BUCKET}" ]]; then
             echo "Repository variable TF_PLAN_BUCKET is required" >&2
             exit 1
           fi
 
-      - name: Terraform init
-        run: terraform init -input=false
-
-      - name: Terraform plan
+      - name: Create saved plans
+        id: source
+        shell: bash
         run: |
-          terraform plan \
-            -input=false \
-            -no-color \
-            -out=tfplan
+          set -euo pipefail
 
-      - name: Package initialized plan
-        run: tar -czf tfapply.tgz tfplan .terraform .terraform.lock.hcl
+          reviewed_tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "tree=${reviewed_tree}" >> "${GITHUB_OUTPUT}"
 
-      - name: Set plan object key
-        id: plan-key
-        run: echo "key=ci-plans/${GITHUB_RUN_ID}/${GITHUB_RUN_ATTEMPT}/${GITHUB_SHA}.tgz" >> "${GITHUB_OUTPUT}"
+          roots=(
+            "bootstrap:terraform/bootstrap"
+            "reliability-control-plane:terraform/reliability-control-plane"
+          )
 
-      - name: Save plan in private S3 storage
+          for entry in "${roots[@]}"; do
+            name="${entry%%:*}"
+            root="${entry#*:}"
+
+            terraform -chdir="${root}" init \
+              -input=false \
+              -lockfile=readonly
+
+            terraform -chdir="${root}" plan \
+              -input=false \
+              -lock-timeout=5m \
+              -no-color \
+              -out=tfplan
+
+            terraform -chdir="${root}" show -json tfplan \
+              > "${RUNNER_TEMP}/${name}-plan.json"
+
+            {
+              echo "reviewed_tree=${reviewed_tree}"
+              echo "head_sha=${PR_HEAD_SHA}"
+              echo "root=${root}"
+            } > "${root}/.terraform-plan-metadata"
+
+            tar \
+              --create \
+              --gzip \
+              --file "${RUNNER_TEMP}/${name}.tgz" \
+              --directory "${root}" \
+              tfplan \
+              .terraform-plan-metadata
+          done
+
+      - name: Build safe plan summary
         env:
-          PLAN_KEY: ${{ steps.plan-key.outputs.key }}
+          REVIEWED_TREE: ${{ steps.source.outputs.tree }}
+        shell: bash
         run: |
-          aws s3 cp tfapply.tgz "s3://${TF_PLAN_BUCKET}/${PLAN_KEY}" \
-            --only-show-errors \
-            --sse AES256
+          set -euo pipefail
+
+          summary="${RUNNER_TEMP}/terraform-plan-summary.md"
+          roots=("bootstrap" "reliability-control-plane")
+
+          {
+            echo '<!-- terraform-plan-summary -->'
+            echo '## Terraform plan summary'
+            echo
+            echo "Reviewed commit: \`${PR_HEAD_SHA}\`"
+            echo "Reviewed tree: \`${REVIEWED_TREE}\`"
+            echo
+            echo 'Only resource addresses and actions are shown; configuration values are intentionally omitted.'
+            echo
+            echo '| Root | Create | Update | Replace | Destroy | Read |'
+            echo '| --- | ---: | ---: | ---: | ---: | ---: |'
+          } > "${summary}"
+
+          for name in "${roots[@]}"; do
+            plan="${RUNNER_TEMP}/${name}-plan.json"
+            create="$(jq '[.resource_changes[]? | select(.change.actions == ["create"])] | length' "${plan}")"
+            update="$(jq '[.resource_changes[]? | select(.change.actions == ["update"])] | length' "${plan}")"
+            replace="$(jq '[.resource_changes[]? | select(.change.actions == ["delete", "create"] or .change.actions == ["create", "delete"])] | length' "${plan}")"
+            destroy="$(jq '[.resource_changes[]? | select(.change.actions == ["delete"])] | length' "${plan}")"
+            read="$(jq '[.resource_changes[]? | select(.change.actions == ["read"])] | length' "${plan}")"
+
+            echo "| \`${name}\` | ${create} | ${update} | ${replace} | ${destroy} | ${read} |" >> "${summary}"
+          done
+
+          for name in "${roots[@]}"; do
+            plan="${RUNNER_TEMP}/${name}-plan.json"
+            echo >> "${summary}"
+            echo "<details><summary><code>${name}</code> affected resources</summary>" >> "${summary}"
+            echo >> "${summary}"
+
+            changes="$(jq '[.resource_changes[]? | select(.change.actions != ["no-op"])] | length' "${plan}")"
+            if [[ "${changes}" == "0" ]]; then
+              echo 'No resource changes.' >> "${summary}"
+            else
+              echo '| Action | Resource |' >> "${summary}"
+              echo '| --- | --- |' >> "${summary}"
+              while IFS=$'\t' read -r action address; do
+                address="${address//|/\\|}"
+                echo "| \`${action}\` | \`${address}\` |" >> "${summary}"
+              done < <(
+                jq -r '
+                  .resource_changes[]?
+                  | select(.change.actions != ["no-op"])
+                  | [(.change.actions | join(" -> ")), .address]
+                  | @tsv
+                ' "${plan}"
+              )
+            fi
+
+            echo >> "${summary}"
+            echo '</details>' >> "${summary}"
+          done
+
+          cat "${summary}" >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Save reviewed plans in private S3 storage
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for name in bootstrap reliability-control-plane; do
+            plan_key="ci-plans/pr-${PR_NUMBER}/${PR_HEAD_SHA}/${name}.tgz"
+            aws s3 cp \
+              "${RUNNER_TEMP}/${name}.tgz" \
+              "s3://${TF_PLAN_BUCKET}/${plan_key}" \
+              --only-show-errors \
+              --sse AES256
+          done
+
+      - name: Publish plan summary to pull request
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PLAN_SUMMARY_FILE: ${{ runner.temp }}/terraform-plan-summary.md
+          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
+        with:
+          script: |
+            const fs = require("node:fs");
+            const marker = "<!-- terraform-plan-summary -->";
+            const body = fs.readFileSync(process.env.PLAN_SUMMARY_FILE, "utf8");
+            const issueNumber = Number(process.env.PULL_REQUEST_NUMBER);
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                per_page: 100,
+              },
+            );
+            const previous = comments.find(
+              (comment) => comment.user?.type === "Bot" && comment.body?.includes(marker),
+            );
+
+            if (previous) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: previous.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body,
+              });
+            }
 
   apply:
-    name: Terraform apply
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: plan
+    name: Terraform apply (${{ matrix.name }})
+    needs: changes
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.action == 'closed' &&
+      github.event.pull_request.merged == true &&
+      needs.changes.outputs.terraform == 'true'
     runs-on: ubuntu-latest
     environment: production
     permissions:
       contents: read
       id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: bootstrap
+            path: terraform/bootstrap
+          - name: reliability-control-plane
+            path: terraform/reliability-control-plane
 
     env:
-      TF_VAR_site_marker: ${{ secrets.SITE_MARKER }}
-      TF_VAR_nids_health_url: ${{ vars.NIDS_HEALTH_URL }}
-      TF_VAR_backup_bucket: ${{ vars.BACKUP_BUCKET }}
-      TF_VAR_alert_email_addresses: '["${{ secrets.ALERT_EMAIL }}"]'
-      TF_VAR_backup_prefix: ${{ vars.BACKUP_PREFIX }}
+      PLAN_KEY: ci-plans/pr-${{ github.event.pull_request.number }}/${{ github.event.pull_request.head.sha }}/${{ matrix.name }}.tgz
+      PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       TF_PLAN_BUCKET: ${{ vars.TF_PLAN_BUCKET }}
-      PLAN_KEY: ${{ needs.plan.outputs.plan-key }}
 
     defaults:
       run:
-        working-directory: ${{ env.TF_WORKING_DIRECTORY }}
+        shell: bash
+        working-directory: ${{ matrix.path }}
 
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      - name: Check out merged commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
 
       - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
 
       - name: Configure AWS apply credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
-          role-to-assume: ${{ vars.AWS_APPLY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_APPLY_ROLE_ARN }}
 
-      - name: Retrieve approved plan
-        run: aws s3 cp "s3://${TF_PLAN_BUCKET}/${PLAN_KEY}" tfapply.tgz --only-show-errors
+      - name: Check plan storage configuration
+        run: |
+          if [[ -z "${TF_PLAN_BUCKET}" ]]; then
+            echo "Repository variable TF_PLAN_BUCKET is required" >&2
+            exit 1
+          fi
 
-      - name: Restore initialized plan
-        run: tar -xzf tfapply.tgz
+      - name: Retrieve reviewed plan
+        run: |
+          aws s3 cp \
+            "s3://${TF_PLAN_BUCKET}/${PLAN_KEY}" \
+            tfapply.tgz \
+            --only-show-errors
 
-      - name: Terraform apply
+      - name: Restore and verify reviewed plan
+        run: |
+          set -euo pipefail
+
+          members="$(tar --list --gzip --file tfapply.tgz | sort)"
+          expected="$(printf '%s\n' '.terraform-plan-metadata' 'tfplan')"
+          if [[ "${members}" != "${expected}" ]]; then
+            echo "Saved plan archive contains unexpected files" >&2
+            exit 1
+          fi
+
+          tar --extract --gzip --file tfapply.tgz
+
+          current_tree="$(git rev-parse 'HEAD^{tree}')"
+          grep --fixed-strings --line-regexp \
+            "reviewed_tree=${current_tree}" \
+            .terraform-plan-metadata
+          grep --fixed-strings --line-regexp \
+            "head_sha=${PR_HEAD_SHA}" \
+            .terraform-plan-metadata
+          grep --fixed-strings --line-regexp \
+            "root=${{ matrix.path }}" \
+            .terraform-plan-metadata
+
+      - name: Terraform init
+        run: terraform init -input=false -lockfile=readonly
+
+      - name: Apply exact reviewed plan
         run: terraform apply -input=false -auto-approve tfplan
 
-      - name: Remove saved plan
-        if: always()
-        run: aws s3 rm "s3://${TF_PLAN_BUCKET}/${PLAN_KEY}" --only-show-errors
+      - name: Remove applied plan
+        run: |
+          if ! aws s3 rm \
+            "s3://${TF_PLAN_BUCKET}/${PLAN_KEY}" \
+            --only-show-errors; then
+            echo "::warning::The applied plan could not be removed from S3"
+          fi
+
+  required:
+    name: Terraform required
+    needs:
+      - changes
+      - validate
+      - plan
+    if: >-
+      always() &&
+      github.event_name == 'pull_request' &&
+      github.event.action != 'closed'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Confirm required Terraform checks passed
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          PLAN_RESULT: ${{ needs.plan.result }}
+          TERRAFORM_CHANGED: ${{ needs.changes.outputs.terraform }}
+          VALIDATE_RESULT: ${{ needs.validate.result }}
+        shell: bash
+        run: |
+          if [[ "${CHANGES_RESULT}" != "success" ]]; then
+            echo "Terraform change detection failed" >&2
+            exit 1
+          fi
+
+          if [[ "${TERRAFORM_CHANGED}" == "true" ]]; then
+            if [[ "${VALIDATE_RESULT}" != "success" || "${PLAN_RESULT}" != "success" ]]; then
+              echo "Terraform validation and planning must pass" >&2
+              exit 1
+            fi
+          fi
