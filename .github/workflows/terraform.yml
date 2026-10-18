@@ -6,7 +6,6 @@ on:
       - opened
       - synchronize
       - reopened
-      - closed
   push:
     branches:
       - main
@@ -20,7 +19,7 @@ permissions:
 
 concurrency:
   group: terraform-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action != 'closed' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   AWS_REGION: us-west-1
@@ -73,7 +72,7 @@ jobs:
     needs: changes
     if: >-
       github.event_name == 'push' ||
-      (github.event.action != 'closed' && needs.changes.outputs.terraform == 'true')
+      needs.changes.outputs.terraform == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -115,7 +114,6 @@ jobs:
       - validate
     if: >-
       github.event_name == 'pull_request' &&
-      github.event.action != 'closed' &&
       needs.changes.outputs.terraform == 'true' &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
@@ -274,12 +272,14 @@ jobs:
           cat "${summary}" >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Save reviewed plans in private S3 storage
+        env:
+          REVIEWED_TREE: ${{ steps.source.outputs.tree }}
         shell: bash
         run: |
           set -euo pipefail
 
           for name in bootstrap reliability-control-plane; do
-            plan_key="ci-plans/pr-${PR_NUMBER}/${PR_HEAD_SHA}/${name}.tgz"
+            plan_key="ci-plans/tree-${REVIEWED_TREE}/${name}.tgz"
             aws s3 cp \
               "${RUNNER_TEMP}/${name}.tgz" \
               "s3://${TF_PLAN_BUCKET}/${plan_key}" \
@@ -329,11 +329,11 @@ jobs:
 
   apply:
     name: Terraform apply (${{ matrix.name }})
-    needs: changes
+    needs:
+      - changes
+      - validate
     if: >-
-      github.event_name == 'pull_request' &&
-      github.event.action == 'closed' &&
-      github.event.pull_request.merged == true &&
+      github.event_name == 'push' &&
       needs.changes.outputs.terraform == 'true'
     runs-on: ubuntu-latest
     environment: production
@@ -350,8 +350,6 @@ jobs:
             path: terraform/reliability-control-plane
 
     env:
-      PLAN_KEY: ci-plans/pr-${{ github.event.pull_request.number }}/${{ github.event.pull_request.head.sha }}/${{ matrix.name }}.tgz
-      PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       TF_PLAN_BUCKET: ${{ vars.TF_PLAN_BUCKET }}
 
     defaults:
@@ -360,11 +358,21 @@ jobs:
         working-directory: ${{ matrix.path }}
 
     steps:
-      - name: Check out merged commit
+      - name: Check out main commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          ref: ${{ github.sha }}
+
+      - name: Resolve merged tree and reviewed plan key
+        env:
+          PLAN_ROOT_NAME: ${{ matrix.name }}
+        run: |
+          set -euo pipefail
+
+          current_tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "CURRENT_TREE=${current_tree}" >> "${GITHUB_ENV}"
+          echo "PLAN_KEY=ci-plans/tree-${current_tree}/${PLAN_ROOT_NAME}.tgz" >> "${GITHUB_ENV}"
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
@@ -405,12 +413,8 @@ jobs:
 
           tar --extract --gzip --file tfapply.tgz
 
-          current_tree="$(git rev-parse 'HEAD^{tree}')"
           grep --fixed-strings --line-regexp \
-            "reviewed_tree=${current_tree}" \
-            .terraform-plan-metadata
-          grep --fixed-strings --line-regexp \
-            "head_sha=${PR_HEAD_SHA}" \
+            "reviewed_tree=${CURRENT_TREE}" \
             .terraform-plan-metadata
           grep --fixed-strings --line-regexp \
             "root=${{ matrix.path }}" \
@@ -438,8 +442,7 @@ jobs:
       - plan
     if: >-
       always() &&
-      github.event_name == 'pull_request' &&
-      github.event.action != 'closed'
+      github.event_name == 'pull_request'
     runs-on: ubuntu-latest
 
     steps:
