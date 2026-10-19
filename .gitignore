@@ -13,3 +13,6 @@ crash.log
 crash.*.log
 *.tfvars
 *.auto.tfvars
+
+__pycache__/
+*.py[cod]

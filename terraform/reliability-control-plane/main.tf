@@ -11,6 +11,12 @@ locals {
         evaluation_periods  = 2
         datapoints_to_alarm = 2
       }
+      probe = {
+        name                = "ProbeExecutionHealthy"
+        period              = 60
+        evaluation_periods  = 2
+        datapoints_to_alarm = 2
+      }
     },
     {
       site = {

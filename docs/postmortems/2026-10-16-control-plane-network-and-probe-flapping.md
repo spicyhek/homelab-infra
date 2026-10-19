@@ -1,7 +1,10 @@
 # Control-plane network failure and health-probe flapping
 
-- **Start:** 2026-10-15 15:05 PDT
-- **Recovered:** 2026-10-16 16:31 PDT
+- **Start:** 2026-10-15T15:05:00-07:00
+- **Detected:** unknown
+- **Investigation started:** unknown
+- **Recovered:** 2026-10-16T16:31:00-07:00
+- **Closed:** unknown
 - **Status:** Resolved; preventive work remains
 
 ## Summary
@@ -60,7 +63,7 @@ returned to normal, and all alarms cleared.
 | P0 | Pin the K3s node and advertise addresses to `192.168.1.122`. | Open |
 | P0 | Make K3s wait for the required IPv4 address before starting. | Open |
 | P1 | Investigate the Ethernet carrier and DHCP lease loss. | Open |
-| P1 | Run probe checks concurrently and emit each metric independently. | Open |
-| P1 | Separate probe-execution failures from endpoint-health alarms. | Open |
+| P1 | Run probe checks concurrently and emit each metric independently. | Implemented; pending deployment |
+| P1 | Separate probe-execution failures from endpoint-health alarms. | Implemented; pending deployment |
 | P2 | Add direct node-readiness and API-reachability alerting. | Open |
 | P2 | Investigate the unrelated Argo CD repo-server crash loop. | Open |

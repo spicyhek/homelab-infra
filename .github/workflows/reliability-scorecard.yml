@@ -1,0 +1,102 @@
+name: Reliability scorecard
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/reliability-scorecard.yml"
+      - "docs/postmortems/**"
+      - "scripts/reliability_scorecard.py"
+      - "terraform/reliability-control-plane/lambda/probe/handler.py"
+      - "tests/test_reliability_probe.py"
+      - "tests/test_reliability_scorecard.py"
+  schedule:
+    - cron: "17 9 * * *"
+  workflow_dispatch:
+    inputs:
+      end_date:
+        description: Exclusive end date in YYYY-MM-DD format; blank uses today in America/Los_Angeles
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reliability-scorecard-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Test reliability measurement
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - name: Run collector tests
+        run: python -m unittest discover -s tests -p "test_reliability_scorecard.py" -v
+
+      - name: Run probe tests
+        run: python -m unittest discover -s tests -p "test_reliability_probe.py" -v
+
+  collect:
+    name: Collect rolling five-day reliability metrics
+    if: github.event_name != 'pull_request'
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - name: Configure AWS read credentials
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          aws-region: us-west-1
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+
+      - name: Generate scorecard
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SCORECARD_END_DATE: ${{ inputs.end_date }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          arguments=(
+            --output scorecard/scorecard.md
+            --json-output scorecard/scorecard.json
+          )
+          if [[ -n "${SCORECARD_END_DATE}" ]]; then
+            arguments+=(--end-date "${SCORECARD_END_DATE}")
+          fi
+
+          python scripts/reliability_scorecard.py "${arguments[@]}"
+          cat scorecard/scorecard.md >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload scorecard
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: reliability-scorecard-${{ github.run_id }}
+          path: scorecard
+          if-no-files-found: error
+          retention-days: 90
