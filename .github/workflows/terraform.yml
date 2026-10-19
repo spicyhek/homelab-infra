@@ -197,13 +197,22 @@ jobs:
               echo "root=${root}"
             } > "${root}/.terraform-plan-metadata"
 
+            archive_members=(
+              tfplan
+              .terraform-plan-metadata
+            )
+            for generated_archive in .terraform/probe.zip .terraform/backup.zip; do
+              if [[ -f "${root}/${generated_archive}" ]]; then
+                archive_members+=("${generated_archive}")
+              fi
+            done
+
             tar \
               --create \
               --gzip \
               --file "${RUNNER_TEMP}/${name}.tgz" \
               --directory "${root}" \
-              tfplan \
-              .terraform-plan-metadata
+              "${archive_members[@]}"
           done
 
       - name: Build safe plan summary
@@ -328,7 +337,7 @@ jobs:
             }
 
   apply:
-    name: Terraform apply (${{ matrix.name }})
+    name: Terraform apply
     needs:
       - changes
       - validate
@@ -340,22 +349,8 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: bootstrap
-            path: terraform/bootstrap
-          - name: reliability-control-plane
-            path: terraform/reliability-control-plane
-
     env:
       TF_PLAN_BUCKET: ${{ vars.TF_PLAN_BUCKET }}
-
-    defaults:
-      run:
-        shell: bash
-        working-directory: ${{ matrix.path }}
 
     steps:
       - name: Check out main commit
@@ -364,15 +359,13 @@ jobs:
           persist-credentials: false
           ref: ${{ github.sha }}
 
-      - name: Resolve merged tree and reviewed plan key
-        env:
-          PLAN_ROOT_NAME: ${{ matrix.name }}
+      - name: Resolve merged tree
+        shell: bash
         run: |
           set -euo pipefail
 
           current_tree="$(git rev-parse 'HEAD^{tree}')"
           echo "CURRENT_TREE=${current_tree}" >> "${GITHUB_ENV}"
-          echo "PLAN_KEY=ci-plans/tree-${current_tree}/${PLAN_ROOT_NAME}.tgz" >> "${GITHUB_ENV}"
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
@@ -387,6 +380,7 @@ jobs:
           role-to-assume: ${{ vars.AWS_APPLY_ROLE_ARN }}
 
       - name: Check plan storage configuration
+        shell: bash
         run: |
           if [[ -z "${TF_PLAN_BUCKET}" ]]; then
             echo "Repository variable TF_PLAN_BUCKET is required" >&2
@@ -394,45 +388,123 @@ jobs:
           fi
 
       - name: Retrieve reviewed plan
-        run: |
-          aws s3 cp \
-            "s3://${TF_PLAN_BUCKET}/${PLAN_KEY}" \
-            tfapply.tgz \
-            --only-show-errors
-
-      - name: Restore and verify reviewed plan
+        shell: bash
         run: |
           set -euo pipefail
 
-          members="$(tar --list --gzip --file tfapply.tgz | sort)"
-          expected="$(printf '%s\n' '.terraform-plan-metadata' 'tfplan')"
-          if [[ "${members}" != "${expected}" ]]; then
-            echo "Saved plan archive contains unexpected files" >&2
-            exit 1
-          fi
+          for name in bootstrap reliability-control-plane; do
+            plan_key="ci-plans/tree-${CURRENT_TREE}/${name}.tgz"
+            aws s3 cp \
+              "s3://${TF_PLAN_BUCKET}/${plan_key}" \
+              "${RUNNER_TEMP}/${name}.tgz" \
+              --only-show-errors
+          done
 
-          tar --extract --gzip --file tfapply.tgz
+      - name: Restore and verify reviewed plan
+        shell: bash
+        run: |
+          set -euo pipefail
 
-          grep --fixed-strings --line-regexp \
-            "reviewed_tree=${CURRENT_TREE}" \
-            .terraform-plan-metadata
-          grep --fixed-strings --line-regexp \
-            "root=${{ matrix.path }}" \
-            .terraform-plan-metadata
+          roots=(
+            "bootstrap:terraform/bootstrap"
+            "reliability-control-plane:terraform/reliability-control-plane"
+          )
+
+          for entry in "${roots[@]}"; do
+            name="${entry%%:*}"
+            root="${entry#*:}"
+            archive="${RUNNER_TEMP}/${name}.tgz"
+            members="$(tar --list --gzip --file "${archive}" | sort)"
+            metadata_count=0
+            plan_count=0
+            probe_count=0
+            backup_count=0
+
+            while IFS= read -r member; do
+              case "${member}" in
+                .terraform-plan-metadata)
+                  metadata_count=$((metadata_count + 1))
+                  ;;
+                tfplan)
+                  plan_count=$((plan_count + 1))
+                  ;;
+                .terraform/probe.zip)
+                  if [[ "${name}" != "reliability-control-plane" ]]; then
+                    echo "Unexpected probe archive in ${name} plan" >&2
+                    exit 1
+                  fi
+                  probe_count=$((probe_count + 1))
+                  ;;
+                .terraform/backup.zip)
+                  if [[ "${name}" != "reliability-control-plane" ]]; then
+                    echo "Unexpected backup archive in ${name} plan" >&2
+                    exit 1
+                  fi
+                  backup_count=$((backup_count + 1))
+                  ;;
+                *)
+                  echo "Saved ${name} plan contains unexpected file: ${member}" >&2
+                  exit 1
+                  ;;
+              esac
+            done <<< "${members}"
+
+            if [[ "${metadata_count}" != 1 || "${plan_count}" != 1 ]]; then
+              echo "Saved ${name} plan must contain one plan and one metadata file" >&2
+              exit 1
+            fi
+            if [[ "${probe_count}" -gt 1 || "${backup_count}" -gt 1 ]]; then
+              echo "Saved ${name} plan contains duplicate Lambda archives" >&2
+              exit 1
+            fi
+            if [[ "${name}" == "reliability-control-plane" && "${probe_count}" != 1 ]]; then
+              echo "Saved reliability-control-plane plan is missing the probe Lambda archive" >&2
+              exit 1
+            fi
+
+            tar \
+              --extract \
+              --gzip \
+              --file "${archive}" \
+              --directory "${root}"
+
+            grep --fixed-strings --line-regexp \
+              "reviewed_tree=${CURRENT_TREE}" \
+              "${root}/.terraform-plan-metadata"
+            grep --fixed-strings --line-regexp \
+              "root=${root}" \
+              "${root}/.terraform-plan-metadata"
+          done
 
       - name: Terraform init
-        run: terraform init -input=false -lockfile=readonly
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for root in terraform/bootstrap terraform/reliability-control-plane; do
+            terraform -chdir="${root}" init -input=false -lockfile=readonly
+          done
 
       - name: Apply exact reviewed plan
-        run: terraform apply -input=false -auto-approve tfplan
-
-      - name: Remove applied plan
+        shell: bash
         run: |
-          if ! aws s3 rm \
-            "s3://${TF_PLAN_BUCKET}/${PLAN_KEY}" \
-            --only-show-errors; then
-            echo "::warning::The applied plan could not be removed from S3"
-          fi
+          set -euo pipefail
+
+          for root in terraform/bootstrap terraform/reliability-control-plane; do
+            terraform -chdir="${root}" apply -input=false -auto-approve tfplan
+          done
+
+      - name: Remove applied plans
+        shell: bash
+        run: |
+          for name in bootstrap reliability-control-plane; do
+            plan_key="ci-plans/tree-${CURRENT_TREE}/${name}.tgz"
+            if ! aws s3 rm \
+              "s3://${TF_PLAN_BUCKET}/${plan_key}" \
+              --only-show-errors; then
+              echo "::warning::The applied ${name} plan could not be removed from S3"
+            fi
+          done
 
   required:
     name: Terraform required
