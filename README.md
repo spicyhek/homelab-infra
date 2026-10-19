@@ -92,3 +92,5 @@ and the retained [Docker Compose configuration](legacy/compose/docker-compose.ym
 ## Operational records
 
 - [Postmortem: control-plane network failure and health-probe flapping](docs/postmortems/2026-10-16-control-plane-network-and-probe-flapping.md)
+- [Reliability measurement and rolling five-day scorecards](docs/metrics/README.md)
+- [Postmortem template](docs/postmortems/TEMPLATE.md)

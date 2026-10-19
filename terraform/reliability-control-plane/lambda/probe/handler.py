@@ -1,3 +1,4 @@
+import concurrent.futures
 import datetime
 import json
 import os
@@ -7,16 +8,20 @@ import urllib.request
 import boto3
 
 cloudwatch = boto3.client("cloudwatch")
-METRICS = { "site": "SiteHealthy",
-            "origin": "OriginHealthy", 
-            "nids": "NidsHealthy",
-            "cluster": "ClusterHealthy"           
-    }
+METRICS = {
+    "site": "SiteHealthy",
+    "origin": "OriginHealthy",
+    "nids": "NidsHealthy",
+    "cluster": "ClusterHealthy",
+}
+PROBE_METRIC = "ProbeExecutionHealthy"
+
 
 def fetch(url):
     request = urllib.request.Request(url, headers={"User-Agent": "homelab-reliability-probe/1.0"})
     with urllib.request.urlopen(request, timeout=10) as response:
         return response.status, response.read()
+
 
 def check_cluster():
     status, body = fetch(os.environ["ORIGIN_STATUS_URL"])
@@ -67,21 +72,47 @@ def check_nids():
             and payload.get("model_loaded") is True and payload.get("ingest_enabled") is True)
 
 
-def lambda_handler(event, context):
-    results = {}
-    for key, checker in (("site", check_site), 
-                         ("origin", check_origin), 
-                         ("nids", check_nids), 
-                         ("cluster", check_cluster)
-                        ):
-        try:
-            results[key] = checker()
-        except Exception as error:
-            results[key] = False
-            print(json.dumps({"check": key, "error": str(error)}))
+CHECKS = (
+    ("site", check_site),
+    ("origin", check_origin),
+    ("nids", check_nids),
+    ("cluster", check_cluster),
+)
+
+
+def publish_metric(name, healthy):
     cloudwatch.put_metric_data(
         Namespace=os.environ["METRIC_NAMESPACE"],
-        MetricData=[{"MetricName": name, "Value": int(results[key]), "Unit": "Count"}
-                    for key, name in METRICS.items()],
+        MetricData=[{"MetricName": name, "Value": int(healthy), "Unit": "Count"}],
     )
-    return results
+
+
+def lambda_handler(event, context):
+    results = {}
+    metric_publication_succeeded = True
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(CHECKS)) as executor:
+        futures = {executor.submit(checker): key for key, checker in CHECKS}
+        for future in concurrent.futures.as_completed(futures):
+            key = futures[future]
+            try:
+                results[key] = bool(future.result())
+            except Exception as error:
+                results[key] = False
+                print(json.dumps({"check": key, "error": str(error)}))
+
+            try:
+                publish_metric(METRICS[key], results[key])
+            except Exception as error:
+                metric_publication_succeeded = False
+                print(json.dumps({"metric": METRICS[key], "error": str(error)}))
+
+    execution_healthy = metric_publication_succeeded and len(results) == len(CHECKS)
+
+    try:
+        publish_metric(PROBE_METRIC, execution_healthy)
+    except Exception as error:
+        execution_healthy = False
+        print(json.dumps({"metric": PROBE_METRIC, "error": str(error)}))
+
+    return {**results, "probe_execution": execution_healthy}
