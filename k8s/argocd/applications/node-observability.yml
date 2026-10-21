@@ -13,6 +13,13 @@ spec:
         releaseName: node-exporter
         valueFiles:
           - $values/k8s/observability/node-exporter-values.yml
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: kube-state-metrics
+      targetRevision: 8.6.0
+      helm:
+        releaseName: kube-state-metrics
+        valueFiles:
+          - $values/k8s/observability/kube-state-metrics-values.yml
     - repoURL: https://grafana.github.io/helm-charts
       chart: alloy
       targetRevision: 1.13.1
