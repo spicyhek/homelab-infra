@@ -1,9 +1,9 @@
 # Worker unavailability and control-plane Ethernet loss
 
-- **Start:** 2026-10-20T11:41:35-07:00 (first observed worker connection loss)
-- **Detected:** 2026-10-20T11:44:01-07:00 (external cluster-health alarm)
+- **Start:** 2026-10-20T11:41:35-07:00
+- **Detected:** 2026-10-20T11:44:01-07:00
 - **Investigation started:** 2026-10-20T16:37:16-07:00
-- **Recovered:** 2026-10-20T18:44:01-07:00 (external cluster-health alarm cleared)
+- **Recovered:** 2026-10-20T18:44:01-07:00
 - **Closed:** unknown
 - **Status:** Resolved; preventive work remains
 
