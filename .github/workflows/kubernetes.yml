@@ -25,6 +25,7 @@ env:
   KUBECONFORM_VERSION: 0.8.0
   KUBERNETES_VERSION: 1.36.4
   KUSTOMIZE_VERSION: 5.8.3
+  KUBE_STATE_METRICS_CHART_VERSION: 8.6.0
   NODE_EXPORTER_CHART_VERSION: 4.59.0
   YAMLLINT_VERSION: 1.38.0
 
@@ -215,6 +216,11 @@ jobs:
             --version "${NODE_EXPORTER_CHART_VERSION}" \
             --values k8s/observability/node-exporter-values.yml \
             > "${RUNNER_TEMP}/node-exporter.yml"
+          helm template kube-state-metrics prometheus-community/kube-state-metrics \
+            --namespace monitoring \
+            --version "${KUBE_STATE_METRICS_CHART_VERSION}" \
+            --values k8s/observability/kube-state-metrics-values.yml \
+            > "${RUNNER_TEMP}/kube-state-metrics.yml"
 
       - name: Validate observability manifests
         shell: bash
@@ -224,7 +230,8 @@ jobs:
             -strict \
             -summary \
             "${RUNNER_TEMP}/alloy.yml" \
-            "${RUNNER_TEMP}/node-exporter.yml"
+            "${RUNNER_TEMP}/node-exporter.yml" \
+            "${RUNNER_TEMP}/kube-state-metrics.yml"
 
       - name: Validate Alloy configuration
         shell: bash
@@ -243,6 +250,9 @@ jobs:
             --volume "${PWD}/k8s/observability/config.alloy:/etc/alloy/config.alloy:ro" \
             "grafana/alloy:${ALLOY_IMAGE_VERSION}" \
             validate /etc/alloy/config.alloy
+
+      - name: Validate Grafana dashboard JSON
+        run: python -m json.tool k8s/observability/grafana/node-readiness.json > /dev/null
 
   validate-argocd:
     name: Validate Argo CD applications
