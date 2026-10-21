@@ -1,0 +1,33 @@
+fullnameOverride: kube-state-metrics
+
+prometheusScrape: false
+replicas: 1
+
+collectors:
+  - nodes
+
+metricAllowlist:
+  - kube_node_status_condition
+  - kube_node_spec_unschedulable
+
+rbac:
+  create: true
+  useClusterRole: true
+
+service:
+  type: ClusterIP
+
+prometheus:
+  monitor:
+    enabled: false
+
+nodeSelector:
+  observability: heavy
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    cpu: 100m
+    memory: 64Mi

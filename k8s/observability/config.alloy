@@ -58,6 +58,29 @@ prometheus.relabel "node_exporter" {
 	}
 }
 
+prometheus.scrape "kube_state_metrics" {
+	targets = [{
+		"__address__" = "kube-state-metrics.monitoring.svc.cluster.local:8080",
+		"cluster"     = "homelab",
+		"instance"    = "kube-state-metrics",
+	}]
+	forward_to      = [prometheus.relabel.kube_state_metrics.receiver]
+	job_name        = "integrations/kube-state-metrics"
+	scrape_interval = "60s"
+	scrape_timeout  = "10s"
+}
+
+prometheus.relabel "kube_state_metrics" {
+	forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+
+	rule {
+		action        = "keep"
+		source_labels = ["__name__", "condition"]
+		separator     = ";"
+		regex         = "kube_node_status_condition;(Ready|MemoryPressure|DiskPressure|PIDPressure|NetworkUnavailable)|kube_node_spec_unschedulable;|up;"
+	}
+}
+
 prometheus.remote_write "grafana_cloud" {
 	endpoint {
 		url = sys.env("GRAFANA_CLOUD_PROMETHEUS_URL")
