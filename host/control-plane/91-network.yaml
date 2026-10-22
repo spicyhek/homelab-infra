@@ -1,0 +1,4 @@
+# Managed by homelab-infra: host/control-plane
+node-ip: 192.168.1.122
+advertise-address: 192.168.1.122
+flannel-iface: eth0

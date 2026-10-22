@@ -1,0 +1,19 @@
+# Managed by homelab-infra: host/control-plane
+[Unit]
+Description=Recover the homelab control-plane Ethernet address
+After=systemd-networkd.service
+Wants=systemd-networkd.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/libexec/homelab-network-guard.py recover
+TimeoutStartSec=90
+RuntimeDirectory=homelab-network-guard
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
+UMask=0077
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK

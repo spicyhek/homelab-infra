@@ -1,0 +1,42 @@
+name: Host network protection
+
+on:
+  pull_request:
+    paths:
+      - "host/control-plane/**"
+      - "tests/test_network_guard.py"
+      - ".github/workflows/host-network.yml"
+  push:
+    branches: [main]
+    paths:
+      - "host/control-plane/**"
+      - "tests/test_network_guard.py"
+      - ".github/workflows/host-network.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Test host network protection
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - name: Test failure and recovery behavior
+        run: python -m unittest discover -s tests -p test_network_guard.py -v
+
+      - name: Check installer syntax
+        run: bash -n host/control-plane/install.sh
+
+      - name: Validate host configuration
+        run: |
+          systemd-analyze verify host/control-plane/homelab-network-guard.service host/control-plane/homelab-network-guard.timer

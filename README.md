@@ -91,6 +91,7 @@ and the retained [Docker Compose configuration](legacy/compose/docker-compose.ym
 
 ## Operational records
 
+- [Control-plane Ethernet recovery and K3s startup protection](host/control-plane/README.md)
 - [Postmortem: control-plane network failure and health-probe flapping](docs/postmortems/2026-10-16-control-plane-network-and-probe-flapping.md)
 - [Postmortem: worker unavailability and control-plane Ethernet loss](docs/postmortems/2026-10-20-worker-unavailability-and-control-plane-ethernet-loss.md)
 - [Reliability measurement and rolling five-day scorecards](docs/metrics/README.md)
