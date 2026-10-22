@@ -100,7 +100,8 @@ change. Kubernetes reported all three nodes `Ready`, and CloudWatch reported
 | --- | --- | --- | --- |
 | P0 | Secure the nodes, power supplies, and cables against movement; verify the affected power and network connections. | Unassigned | Open |
 | P0 | Diagnose the control-plane Ethernet carrier flaps and failure to reacquire IPv4; test the cable and switch port, and track NIC receive-resource errors over time. | Unassigned | Open |
-| P0 | Make `192.168.1.122` a reliable wired address, with a conflict-free DHCP reservation or host static configuration, and test recovery after a planned link interruption. | Unassigned | Open |
-| P0 | Complete the October 16 actions to pin K3s node/advertise addresses and gate server startup on the required wired IPv4 address. | Unassigned | Open |
-| P1 | Alert on control-plane Ethernet carrier/address loss and worker readiness; add network-interface health to the Grafana Cloud metrics allowlist. | Unassigned | Open |
+| P0 | Make `192.168.1.122` a reliable wired address with conflict-free host static configuration, and test recovery after a planned link interruption. A DHCP reservation alone still depends on lease acquisition. | Operator | Open; operator plans the addressing change |
+| P0 | Complete the October 16 actions to pin K3s node/advertise addresses and gate server startup on the required wired IPv4 address. | Operator | Deployed October 22; Flannel pinned to `eth0`, and startup check passed |
+| P1 | Recover a missing wired address independently of Kubernetes with diagnostics and a cooldown. | Operator | Host watchdog deployed October 22; healthy scheduled checks verified; fault recovery test remains open |
+| P1 | Alert on control-plane Ethernet carrier/address loss and worker readiness; add network-interface health to the Grafana Cloud metrics allowlist. | Unassigned | Partial: local watchdog fault logging and external `ClusterHealthy` are present; interface metrics and dedicated external network notifications remain open |
 | P1 | Make the control-plane Cloudflare Tunnel placement explicit in manifests and documentation so this surviving connector is retained intentionally. | Unassigned | Open |
