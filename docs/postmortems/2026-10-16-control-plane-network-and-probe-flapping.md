@@ -60,10 +60,11 @@ returned to normal, and all alarms cleared.
 
 | Priority | Action | Status |
 | --- | --- | --- |
-| P0 | Pin the K3s node and advertise addresses to `192.168.1.122`. | Open |
-| P0 | Make K3s wait for the required IPv4 address before starting. | Open |
+| P0 | Pin the K3s node and advertise addresses to `192.168.1.122`. | Deployed October 22; Flannel also pinned to `eth0` |
+| P0 | Make K3s wait for the required IPv4 address before starting. | Deployed October 22; pre-start check passed during K3s restart |
 | P1 | Investigate the Ethernet carrier and DHCP lease loss. | Open |
-| P1 | Run probe checks concurrently and emit each metric independently. | Implemented; pending deployment |
-| P1 | Separate probe-execution failures from endpoint-health alarms. | Implemented; pending deployment |
-| P2 | Add direct node-readiness and API-reachability alerting. | Open |
-| P2 | Investigate the unrelated Argo CD repo-server crash loop. | Open |
+| P1 | Run probe checks concurrently and emit each metric independently. | Deployed; verified in the live Lambda package October 22; AWS last-modified timestamp October 19 |
+| P1 | Separate probe-execution failures from endpoint-health alarms. | Deployed; live package publishes `ProbeExecutionHealthy` and the dedicated alarm is present |
+| P1 | Recover a missing wired address independently of Kubernetes. | Host watchdog deployed October 22; automatic fault recovery validation remains open |
+| P2 | Add direct node-readiness and API-reachability alerting. | Partial: `ClusterHealthy` evaluates the external node snapshot; an independent API-reachability alert remains open |
+| P2 | Investigate the unrelated Argo CD repo-server crash loop. | Running without restarts in the October 22 observation; original cause and corrective action unverified |
