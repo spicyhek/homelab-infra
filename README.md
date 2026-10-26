@@ -95,5 +95,5 @@ and the retained [Docker Compose configuration](legacy/compose/docker-compose.ym
 - [Postmortem: control-plane network failure and health-probe flapping](docs/postmortems/2026-10-16-control-plane-network-and-probe-flapping.md)
 - [Postmortem: worker unavailability and control-plane Ethernet loss](docs/postmortems/2026-10-20-worker-unavailability-and-control-plane-ethernet-loss.md)
 - [Postmortem: repeated control-plane Ethernet and IPv4 address loss](docs/postmortems/2026-10-22-control-plane-ethernet-address-loss.md)
-- [Reliability measurement and rolling five-day scorecards](docs/metrics/README.md)
+- [Reliability measurement and rolling seven-day scorecards](docs/metrics/README.md)
 - [Postmortem template](docs/postmortems/TEMPLATE.md)
