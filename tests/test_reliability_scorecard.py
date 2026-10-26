@@ -14,19 +14,27 @@ SPEC.loader.exec_module(scorecard)
 
 
 class ReliabilityScorecardTests(unittest.TestCase):
-    def test_rolling_window_uses_five_complete_local_days(self):
+    def test_rolling_window_uses_seven_complete_local_days(self):
         window = scorecard.rolling_window("2026-10-19", "America/Los_Angeles")
 
-        self.assertEqual(window.start, datetime(2026, 10, 14, 7, tzinfo=UTC))
+        self.assertEqual(scorecard.build_parser().parse_args([]).days, 7)
+        self.assertEqual(window.label, "7 days ending 2026-10-19")
+        self.assertEqual(window.start, datetime(2026, 10, 12, 7, tzinfo=UTC))
         self.assertEqual(window.end, datetime(2026, 10, 19, 7, tzinfo=UTC))
-        self.assertEqual(window.expected_minutes, 7_200)
+        self.assertEqual(window.expected_minutes, 10_080)
+        self.assertEqual(
+            scorecard.cloudwatch_period(window, now=window.end), 420
+        )
 
     def test_rolling_window_accounts_for_daylight_saving_transition(self):
         window = scorecard.rolling_window("2026-11-04", "America/Los_Angeles")
 
-        self.assertEqual(window.start, datetime(2026, 10, 30, 7, tzinfo=UTC))
+        self.assertEqual(window.start, datetime(2026, 10, 28, 7, tzinfo=UTC))
         self.assertEqual(window.end, datetime(2026, 11, 4, 8, tzinfo=UTC))
-        self.assertEqual(window.expected_minutes, 7_260)
+        self.assertEqual(window.expected_minutes, 10_140)
+        self.assertEqual(
+            scorecard.cloudwatch_period(window, now=window.end), 480
+        )
 
     def test_rolling_window_defaults_to_today_as_exclusive_local_end(self):
         window = scorecard.rolling_window(
@@ -35,7 +43,7 @@ class ReliabilityScorecardTests(unittest.TestCase):
             now=datetime(2026, 10, 19, 10, tzinfo=UTC),
         )
 
-        self.assertEqual(window.start, datetime(2026, 10, 14, 7, tzinfo=UTC))
+        self.assertEqual(window.start, datetime(2026, 10, 12, 7, tzinfo=UTC))
         self.assertEqual(window.end, datetime(2026, 10, 19, 7, tzinfo=UTC))
 
     def test_cloudwatch_availability_counts_missing_samples_as_unavailable(self):

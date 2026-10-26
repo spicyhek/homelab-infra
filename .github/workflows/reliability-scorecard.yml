@@ -48,7 +48,7 @@ jobs:
         run: python -m unittest discover -s tests -p "test_reliability_probe.py" -v
 
   collect:
-    name: Collect rolling five-day reliability metrics
+    name: Collect rolling seven-day reliability metrics
     if: github.event_name != 'pull_request'
     needs: test
     runs-on: ubuntu-latest

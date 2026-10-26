@@ -133,7 +133,7 @@ def to_local(value: datetime, timezone_name: str) -> datetime:
 def rolling_window(
     end_date: str | None,
     timezone: str,
-    days: int = 5,
+    days: int = 7,
     now: datetime | None = None,
 ) -> Window:
     """Return complete local calendar days ending at an exclusive local date."""
@@ -428,7 +428,7 @@ def render_markdown(
         f"# Reliability scorecard — {window.label}",
         "",
         f"Window: `{iso_z(window.start)}` through `{iso_z(window.end)}` "
-        f"(last five complete {window.timezone} calendar days; end is exclusive)",
+        f"(complete {window.timezone} calendar days; end is exclusive)",
         "",
         "## Availability",
         "",
@@ -500,7 +500,7 @@ def render_markdown(
             "",
             "## Interpretation notes",
             "",
-            "- Treat availability as resume-ready only when probe coverage is complete and the metric existed for the full five-day window.",
+            "- Treat availability as resume-ready only when probe coverage is complete and the metric existed for the full reporting window.",
             "- Record every incident using `docs/postmortems/TEMPLATE.md`; missing timestamps remain explicitly unmeasured.",
             "- Backup measurements are intentionally excluded from this scorecard.",
             "",
@@ -515,7 +515,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--end-date",
         help="Exclusive local end date in YYYY-MM-DD format; defaults to today",
     )
-    parser.add_argument("--days", type=int, default=5, help="Number of complete local calendar days")
+    parser.add_argument("--days", type=int, default=7, help="Number of complete local calendar days (default: 7)")
     parser.add_argument("--timezone", default="America/Los_Angeles")
     parser.add_argument("--aws-region", default=os.environ.get("AWS_REGION", "us-west-1"))
     parser.add_argument("--aws-profile")

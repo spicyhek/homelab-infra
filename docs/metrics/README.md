@@ -1,13 +1,13 @@
 # Reliability measurement
 
-The rolling five-day scorecard measures service availability, monitoring
+The rolling seven-day scorecard measures service availability, monitoring
 coverage, application delivery, and incident response. AWS cost and backup
 measurements are intentionally excluded.
 
 ## Definitions
 
 - **Availability:** healthy one-minute samples divided by every expected minute
-  in the last five complete Pacific-time calendar days. Missing samples count
+  in the last seven complete Pacific-time calendar days. Missing samples count
   as unavailable.
 - **Probe coverage:** reported samples divided by expected samples. This keeps a
   monitoring failure from being mistaken for confirmed service downtime.
@@ -48,4 +48,4 @@ it.
 
 The first reports after introducing `ProbeExecutionHealthy` will show partial
 coverage because that metric did not exist for the entire window. Wait for its
-first complete five-day window before using it as a resume statistic.
+first complete seven-day window before using it as a resume statistic.
