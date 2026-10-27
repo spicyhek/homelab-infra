@@ -55,7 +55,7 @@ spec:
               mountPath: /zeek-logs
 
         - name: zeek-converter
-          image: ghcr.io/spicyhek/mynids:sha-de3ec5b4e29f04a0e7533de93edc71e2041c3c31
+          image: ghcr.io/spicyhek/mynids:sha-9e445297a24c9acdcc54545be951e6288705e572
           imagePullPolicy: Always
           command:
             - python
