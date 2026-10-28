@@ -32,7 +32,7 @@ spec:
         kubernetes.io/hostname: homelab-control-plane
       containers:
         - name: zeek
-          image: zeek/zeek:latest
+          image: zeek/zeek@sha256:524cb0ce29f26a6a954fb9c357a8f92b95812476d8240f0ece26617ace249dd0
           imagePullPolicy: Always
           securityContext:
             privileged: true
@@ -45,6 +45,7 @@ spec:
           args:
             - -i
             - eth0
+            - -C
             - local
           volumeMounts:
             - name: zeek-local-policy
