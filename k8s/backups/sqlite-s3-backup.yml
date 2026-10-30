@@ -5,6 +5,9 @@ metadata:
   namespace: default
 spec:
   schedule: "0 * * * *"
+  # Suspended: every run since 2026-10-27 hit its deadline and saturated the
+  # control-plane disk; see docs/postmortems/2026-10-22-control-plane-k3s-restarts-from-etcd-disk-stalls.md.
+  suspend: true
   concurrencyPolicy: Forbid
   startingDeadlineSeconds: 600
   successfulJobsHistoryLimit: 3
