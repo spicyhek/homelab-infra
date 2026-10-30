@@ -3,3 +3,11 @@ kind: Kustomization
 
 resources:
   - zeek.yml
+
+# local.zeek is mounted with subPath, which never refreshes in a running pod. The name hash
+# changes the DaemonSet template whenever the policy changes, so Zeek restarts and loads it.
+configMapGenerator:
+  - name: zeek-local-policy
+    namespace: default
+    files:
+      - local.zeek
