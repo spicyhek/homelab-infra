@@ -46,7 +46,7 @@ configReloader:
       memory: 16Mi
     limits:
       cpu: 50m
-      memory: 32Mi
+      memory: 128Mi
 
 controller:
   type: deployment
