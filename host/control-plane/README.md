@@ -42,6 +42,21 @@ does not stop or restart the running K3s service.
 The cluster currently uses IPv4 Pod/Service networks; the pinned node address is
 also IPv4. Revisit these settings before introducing a dual-stack cluster.
 
+## K3s stall tolerance and disk sampling
+
+etcd fsync stalls on the shared USB NVMe have outlasted the default 10-second
+leader-election renew deadline; the embedded controller manager then loses its
+lease and k3s exits (12 restarts by October 30). `92-leader-election.yaml` raises
+the lease duration, renew deadline and retry period to 60/40/5 seconds for the
+controller manager, scheduler and cloud controller manager, so stalls up to about
+40 seconds no longer stop k3s. With one server, slower failover costs nothing.
+This tolerates the stalls; it does not remove their cause (shared disk I/O). It
+activates at the next k3s restart (`--restart-k3s`).
+
+`sysstat-collect-1min.conf` overrides the packaged 10-minute sysstat timer to
+sample every minute, so `sar -d` can show whether a disk stall preceded a k3s exit.
+Remove the override to return to 10-minute sampling.
+
 ## Install
 
 Review and merge changes through the normal repository PR workflow. Argo CD does

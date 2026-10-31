@@ -29,6 +29,8 @@ sources=(
   homelab-network-guard.timer
   k3s-network.conf
   91-network.yaml
+  92-leader-election.yaml
+  sysstat-collect-1min.conf
 )
 targets=(
   /usr/local/libexec/homelab-network-guard.py
@@ -36,6 +38,8 @@ targets=(
   /etc/systemd/system/homelab-network-guard.timer
   /etc/systemd/system/k3s.service.d/20-network-guard.conf
   /etc/rancher/k3s/config.yaml.d/91-network.yaml
+  /etc/rancher/k3s/config.yaml.d/92-leader-election.yaml
+  /etc/systemd/system/sysstat-collect.timer.d/10-every-minute.conf
 )
 
 # Refuse to overwrite an unrelated administrator-owned file at a managed path.
@@ -59,8 +63,10 @@ for index in "${!targets[@]}"; do
 done
 
 systemd-analyze verify /etc/systemd/system/homelab-network-guard.service \
-  /etc/systemd/system/homelab-network-guard.timer /etc/systemd/system/k3s.service
+  /etc/systemd/system/homelab-network-guard.timer /etc/systemd/system/k3s.service \
+  /usr/lib/systemd/system/sysstat-collect.timer
 systemctl daemon-reload
+systemctl restart sysstat-collect.timer
 systemctl enable --now homelab-network-guard.timer
 systemctl start homelab-network-guard.service
 printf 'Installed network guard. Previous managed files, if any: %s\n' "${backup_dir}"

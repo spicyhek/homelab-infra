@@ -1,0 +1,16 @@
+# Managed by homelab-infra: host/control-plane
+# etcd fsync stalls on the shared USB NVMe have outlasted the default 10 s renew deadline,
+# and a lost lease makes the embedded controllers exit k3s. Tolerate stalls up to ~40 s.
+# There is one server, so slower leader failover costs nothing.
+kube-controller-manager-arg:
+  - leader-elect-lease-duration=60s
+  - leader-elect-renew-deadline=40s
+  - leader-elect-retry-period=5s
+kube-scheduler-arg:
+  - leader-elect-lease-duration=60s
+  - leader-elect-renew-deadline=40s
+  - leader-elect-retry-period=5s
+kube-cloud-controller-manager-arg:
+  - leader-elect-lease-duration=60s
+  - leader-elect-renew-deadline=40s
+  - leader-elect-retry-period=5s
