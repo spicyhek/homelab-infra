@@ -76,6 +76,33 @@ spec:
             - name: zeek-state
               mountPath: /var/lib/mynids
 
+        # Zeek rotates logs hourly but never deletes them; they share the USB NVMe with etcd.
+        # Only timestamped rotations older than 14 days are removed (about 1.6 GB is kept).
+        # The live *.log files and the current/ directory are never touched, and the converter
+        # only rereads the latest rotated conn log, so it never loses unread lines.
+        - name: zeek-log-retention
+          image: zeek/zeek@sha256:524cb0ce29f26a6a954fb9c357a8f92b95812476d8240f0ece26617ace249dd0
+          imagePullPolicy: Always
+          command:
+            - /bin/sh
+            - -c
+            - |
+              while true; do
+                find /zeek-logs -maxdepth 1 -type f \
+                  -name '*.[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9].log' \
+                  -mmin +20160 -print -delete | wc -l | sed 's/^/zeek-log-retention: deleted /'
+                sleep 3600
+              done
+          resources:
+            requests:
+              cpu: 5m
+              memory: 8Mi
+            limits:
+              memory: 32Mi
+          volumeMounts:
+            - name: zeek-logs
+              mountPath: /zeek-logs
+
       volumes:
         - name: zeek-local-policy
           configMap:
