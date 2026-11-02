@@ -23,7 +23,7 @@ spec:
       containers:
         - name: web
           image: ghcr.io/spicyhek/homelab-hosted-personal-site
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80
           resources:
