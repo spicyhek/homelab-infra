@@ -19,7 +19,7 @@ spec:
       containers:
         - name: zeek
           image: zeek/zeek@sha256:524cb0ce29f26a6a954fb9c357a8f92b95812476d8240f0ece26617ace249dd0
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           securityContext:
             privileged: true
             capabilities:
@@ -43,7 +43,7 @@ spec:
 
         - name: zeek-converter
           image: ghcr.io/spicyhek/mynids:sha-bad602b68ac9f373c9f6377a6240d5475eeb9821
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           command:
             - python
             - sensor/zeek_to_cicids.py
@@ -82,7 +82,7 @@ spec:
         # only rereads the latest rotated conn log, so it never loses unread lines.
         - name: zeek-log-retention
           image: zeek/zeek@sha256:524cb0ce29f26a6a954fb9c357a8f92b95812476d8240f0ece26617ace249dd0
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           command:
             - /bin/sh
             - -c
