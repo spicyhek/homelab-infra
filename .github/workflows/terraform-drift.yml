@@ -1,0 +1,275 @@
+name: Terraform drift
+
+# Nightly check that AWS still matches main. It reports two kinds of difference
+# for each Terraform root:
+#   - drift: objects changed outside Terraform (console edits, manual CLI calls),
+#     found with a refresh-only plan;
+#   - pending: changes on main that are not applied yet (an apply waiting for
+#     approval, or one that failed), found with a normal plan.
+# Results go to one open GitHub issue, which is closed when everything matches.
+# Only resource addresses and actions are reported, never configuration values,
+# and plan output is kept out of the (public) job log.
+
+on:
+  schedule:
+    - cron: "43 10 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-drift
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-west-1
+  TF_IN_AUTOMATION: true
+  TF_VERSION: 1.16.0
+
+jobs:
+  detect:
+    name: Detect Terraform drift
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      issues: write
+
+    env:
+      TF_VAR_alert_email_addresses: '["${{ secrets.ALERT_EMAIL }}"]'
+      TF_VAR_backup_bucket: ${{ vars.BACKUP_BUCKET }}
+      TF_VAR_backup_prefix: ${{ vars.BACKUP_PREFIX }}
+      TF_VAR_nids_health_url: ${{ vars.NIDS_HEALTH_URL }}
+      TF_VAR_site_marker: ${{ secrets.SITE_MARKER }}
+
+    steps:
+      - name: Check out main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: main
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Configure AWS plan credentials
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+
+      - name: Create drift and pending plans
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          roots=(
+            "bootstrap:terraform/bootstrap"
+            "reliability-control-plane:terraform/reliability-control-plane"
+          )
+
+          for entry in "${roots[@]}"; do
+            name="${entry%%:*}"
+            root="${entry#*:}"
+
+            echo "::group::${name}"
+            terraform -chdir="${root}" init \
+              -input=false \
+              -lockfile=readonly \
+              -no-color \
+              > /dev/null
+
+            # Read-only checks: no state lock, so they never block or wait on an apply.
+            # Plan text goes to /dev/null; errors still reach the log on stderr.
+            terraform -chdir="${root}" plan \
+              -refresh-only \
+              -input=false \
+              -lock=false \
+              -no-color \
+              -out=drift.tfplan \
+              > /dev/null
+            terraform -chdir="${root}" show -json drift.tfplan \
+              > "${RUNNER_TEMP}/${name}-drift.json"
+
+            terraform -chdir="${root}" plan \
+              -input=false \
+              -lock=false \
+              -no-color \
+              -out=pending.tfplan \
+              > /dev/null
+            terraform -chdir="${root}" show -json pending.tfplan \
+              > "${RUNNER_TEMP}/${name}-pending.json"
+
+            rm -f "${root}/drift.tfplan" "${root}/pending.tfplan"
+            echo "Plans created for ${name}"
+            echo "::endgroup::"
+          done
+
+      - name: Build safe drift report
+        id: report
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          roots=("bootstrap" "reliability-control-plane")
+          report="${RUNNER_TEMP}/terraform-drift-report.md"
+          rows="${RUNNER_TEMP}/terraform-drift-rows.tsv"
+          : > "${rows}"
+
+          for name in "${roots[@]}"; do
+            # A refresh-only plan lists detected changes under resource_drift;
+            # resource_changes is included too in case a Terraform version reports them there.
+            jq -r --arg root "${name}" '
+              [(.resource_drift // [])[], (.resource_changes // [])[]]
+              | map(select(.change.actions != ["no-op"] and .change.actions != ["read"]))
+              | unique_by(.address)[]
+              | ["drift", $root, (.change.actions | join(" -> ")), .address]
+              | @tsv
+            ' "${RUNNER_TEMP}/${name}-drift.json" >> "${rows}"
+
+            jq -r --arg root "${name}" '
+              (.resource_changes // [])[]
+              | select(.change.actions != ["no-op"] and .change.actions != ["read"])
+              | ["pending", $root, (.change.actions | join(" -> ")), .address]
+              | @tsv
+            ' "${RUNNER_TEMP}/${name}-pending.json" >> "${rows}"
+          done
+
+          sort -o "${rows}" "${rows}"
+          drift_count="$(awk -F '\t' '$1 == "drift"' "${rows}" | wc -l | tr -d ' ')"
+          pending_count="$(awk -F '\t' '$1 == "pending"' "${rows}" | wc -l | tr -d ' ')"
+          fingerprint="$(sha256sum "${rows}" | cut -c1-16)"
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          main_sha="$(git rev-parse HEAD)"
+
+          {
+            echo '<!-- terraform-drift-report -->'
+            echo "<!-- fingerprint:${fingerprint} -->"
+            echo '## Terraform drift report'
+            echo
+            echo "Checked \`main\` at \`${main_sha}\` in [run ${GITHUB_RUN_ID}](${run_url})."
+            echo
+            echo '- **Drift**: objects changed outside Terraform. Find out who changed them and why, then either'
+            echo '  bring the change into Git or run an apply to revert it.'
+            echo '- **Pending**: changes on `main` that are not applied. Check for a Terraform apply waiting for'
+            echo '  approval in the `production` environment, or one that failed.'
+            echo
+            echo 'Only resource addresses and actions are shown; configuration values are intentionally omitted.'
+            echo
+            echo '| Root | Drift | Pending |'
+            echo '| --- | ---: | ---: |'
+            for name in "${roots[@]}"; do
+              d="$(awk -F '\t' -v r="${name}" '$1 == "drift" && $2 == r' "${rows}" | wc -l | tr -d ' ')"
+              p="$(awk -F '\t' -v r="${name}" '$1 == "pending" && $2 == r' "${rows}" | wc -l | tr -d ' ')"
+              echo "| \`${name}\` | ${d} | ${p} |"
+            done
+
+            if [[ -s "${rows}" ]]; then
+              echo
+              echo '| Kind | Root | Action | Resource |'
+              echo '| --- | --- | --- | --- |'
+              while IFS=$'\t' read -r kind root action address; do
+                address="${address//|/\\|}"
+                echo "| ${kind} | \`${root}\` | \`${action}\` | \`${address}\` |"
+              done < "${rows}"
+            else
+              echo
+              echo 'AWS matches `main`.'
+            fi
+          } > "${report}"
+
+          cat "${report}" >> "${GITHUB_STEP_SUMMARY}"
+
+          {
+            echo "drift_count=${drift_count}"
+            echo "pending_count=${pending_count}"
+            echo "fingerprint=${fingerprint}"
+            echo "run_url=${run_url}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Open, update or close the drift issue
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          DRIFT_COUNT: ${{ steps.report.outputs.drift_count }}
+          PENDING_COUNT: ${{ steps.report.outputs.pending_count }}
+          FINGERPRINT: ${{ steps.report.outputs.fingerprint }}
+          REPORT_FILE: ${{ runner.temp }}/terraform-drift-report.md
+          RUN_URL: ${{ steps.report.outputs.run_url }}
+        with:
+          script: |
+            const fs = require("node:fs");
+            const marker = "<!-- terraform-drift-report -->";
+            const { owner, repo } = context.repo;
+            const drift = Number(process.env.DRIFT_COUNT);
+            const pending = Number(process.env.PENDING_COUNT);
+            const fingerprint = process.env.FINGERPRINT;
+            const runUrl = process.env.RUN_URL;
+            const body = fs.readFileSync(process.env.REPORT_FILE, "utf8");
+
+            const openIssues = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: "open",
+              creator: "github-actions[bot]",
+              per_page: 100,
+            });
+            const existing = openIssues.find(
+              (issue) => !issue.pull_request && issue.body?.includes(marker),
+            );
+
+            if (drift + pending === 0) {
+              if (existing) {
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number: existing.number,
+                  body: `AWS matches \`main\` again as of [this run](${runUrl}). Closing.`,
+                });
+                await github.rest.issues.update({
+                  owner,
+                  repo,
+                  issue_number: existing.number,
+                  state: "closed",
+                  state_reason: "completed",
+                });
+                core.notice(`No drift; closed #${existing.number}`);
+              } else {
+                core.notice("No drift");
+              }
+              return;
+            }
+
+            const parts = [];
+            if (drift) parts.push(`${drift} drifted`);
+            if (pending) parts.push(`${pending} pending`);
+            const title = `Terraform drift: ${parts.join(", ")}`;
+
+            if (!existing) {
+              const created = await github.rest.issues.create({ owner, repo, title, body });
+              core.warning(`${title}; opened #${created.data.number}`);
+              return;
+            }
+
+            const previous = existing.body.match(/<!-- fingerprint:([0-9a-f]+) -->/)?.[1];
+            await github.rest.issues.update({
+              owner,
+              repo,
+              issue_number: existing.number,
+              title,
+              body,
+            });
+            if (previous !== fingerprint) {
+              // Comment only when the set of differences changes, so an unresolved
+              // issue does not send a notification every night.
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: existing.number,
+                body: `The set of differences changed in [this run](${runUrl}); the issue description now shows the current report.`,
+              });
+            }
+            core.warning(`${title}; updated #${existing.number}`);
