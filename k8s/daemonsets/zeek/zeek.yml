@@ -70,6 +70,11 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            # Also send zeek-conn-window-v2 features for the nids shadow model. Operational v1 flows
+            # are unchanged; if the server rejects the extra fields (422) the batch is resent without
+            # them. Window state is in memory, so the first ~60 s after a restart are not classified.
+            - name: NIDS_EXPORT_FEATURES_V2
+              value: "true"
           volumeMounts:
             - name: zeek-logs
               mountPath: /zeek-logs

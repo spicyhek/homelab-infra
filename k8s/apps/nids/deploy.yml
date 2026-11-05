@@ -66,6 +66,14 @@ spec:
                 secretKeyRef:
                   name: nids-secrets
                   key: NIDS_INGEST_TOKEN
+            # Shadow model (zeek-conn-window-v2): predictions are stored separately and never change
+            # operational labels, counters, alerts or the dashboard. The app unpickles the bundle only
+            # if tree_model.joblib matches this SHA-256 (nids-v6-tree-baseline-v2, passed the reserved
+            # final test 2026-11-05). A load failure is reported but never degrades readiness.
+            - name: NIDS_SHADOW_MODEL_DIR
+              value: /models/nids-v6-tree-baseline-v2
+            - name: NIDS_SHADOW_MODEL_SHA256
+              value: e0c5b9fd21a3c19880e53eb9694d6f475e6df5f1731318fd96c2b010b6ac6ba8
           startupProbe:
             httpGet:
               path: /healthz
@@ -92,6 +100,9 @@ spec:
           volumeMounts:
             - name: nids-data
               mountPath: /data
+            - name: shadow-models
+              mountPath: /models
+              readOnly: true
           resources:
             requests:
               cpu: "250m"
@@ -103,6 +114,14 @@ spec:
         - name: nids-data
           persistentVolumeClaim:
             claimName: nids-data
+        # Private model bundles staged by the operator on homelab-control-plane (the pod is pinned
+        # there). They stay out of the public image, a ConfigMap (the bundle is ~1.8 MB) and the DB
+        # volume. type Directory means a missing stage blocks the new pod, while maxUnavailable: 0
+        # keeps the old pod serving. See docs/nids-shadow-model.md.
+        - name: shadow-models
+          hostPath:
+            path: /var/lib/mynids-models
+            type: Directory
 ---
 apiVersion: v1
 kind: Service
