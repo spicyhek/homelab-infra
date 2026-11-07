@@ -26,7 +26,8 @@ Current shadow model: `nids-v6-tree-baseline-v2`, `tree_model.joblib` sha256
 ```bash
 ssh brendanmanley@192.168.1.104   # Wi-Fi, per host/control-plane/README.md
 # Database size: shadow rows roughly double per-flow storage under the same 28-day retention.
-sudo du -sh /var/lib/rancher/k3s/storage/*_default_nids-data
+# The storage dir is root 0700, so the glob must expand under sudo, not in your shell.
+sudo sh -c 'du -sh /var/lib/rancher/k3s/storage/*_default_nids-data'
 df -h /
 # DNS must work and both images should already be cached (no pull needed); see the 2026-10-29 postmortem.
 getent hosts ghcr.io
@@ -89,9 +90,15 @@ kubectl logs ds/zeek -c zeek-converter --since=10m | tail  # no repeated "reject
 ## What to watch during shadow
 
 - **Online vs offline parity.** Training and the final test ran Zeek offline with the image's default `local`
-  scripts plus the VXLAN policy. The live sensor loads only `json-logs` plus the same VXLAN redefs. The features use
-  conn.log fields that should match, but compare shadow output with an offline replay of the same hour before
-  trusting it.
+  scripts plus the VXLAN policy. The live sensor loads only `json-logs` plus the same VXLAN redefs.
+  - A parity check on 2026-11-07 compared 9.3 h of live conn.log against an offline replay of the same capture
+    (`mynids/data/evaluation/analyses/20261103T004336Z-24f3f36a/parity-v1/PARITY.md`, a private local file). It
+    found **no difference from the script set** and 0 shadow label flips in 49k flows.
+  - It did find that the default 9216-byte `Pcap::snaplen` truncated this host's offloaded apiserver responses
+    (up to ~17 KB). That logged false content gaps (`missed_bytes`, history `g`) on ~1.2 % of live connections,
+    which offline replays never have. `local.zeek` now sets `Pcap::snaplen = 262144`.
+  - Re-run the parity check on a capture taken after that change. Only the inherent live-vs-offline differences
+    should remain: sparse multicast UDP split differently, and ±1 window counts from write order.
 - Shadow alert rate vs the final test's 0/h on homelab benign, and disagreements with the production model.
 - Database growth and disk I/O on the shared USB NVMe (see the control-plane disk notes).
 
