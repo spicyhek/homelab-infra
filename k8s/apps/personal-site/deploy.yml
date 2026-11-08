@@ -3,6 +3,8 @@ kind: Deployment
 metadata:
   name: personal-site
   namespace: default
+  labels:
+    mybuilds.brendanmanley.com/managed: "true"
 spec:
   replicas: 3
   selector:
@@ -12,6 +14,7 @@ spec:
     metadata:
       labels:
         app: personal-site
+        mybuilds.brendanmanley.com/managed: "true"
     spec:
       topologySpreadConstraints:
         - maxSkew: 1
