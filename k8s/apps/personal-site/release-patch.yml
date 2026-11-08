@@ -1,0 +1,23 @@
+# Rewritten by the personal-site release workflow on every promotion.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: personal-site
+  namespace: default
+  annotations:
+    mybuilds.brendanmanley.com/release-id: "personal-site/fb873c3/production/10"
+    mybuilds.brendanmanley.com/source-sha: "fb873c3bc1462617c9347729503dad09afd84ce0"
+    mybuilds.brendanmanley.com/artifact-digest: "sha256:b8138aefdd9b3bfdc230392d80fbdbd228c44519e703598385f0b2c02a037ec6"
+spec:
+  template:
+    metadata:
+      annotations:
+        mybuilds.brendanmanley.com/release-id: "personal-site/fb873c3/production/10"
+        mybuilds.brendanmanley.com/source-sha: "fb873c3bc1462617c9347729503dad09afd84ce0"
+        mybuilds.brendanmanley.com/artifact-digest: "sha256:b8138aefdd9b3bfdc230392d80fbdbd228c44519e703598385f0b2c02a037ec6"
+    spec:
+      containers:
+        - name: web
+          env:
+            - name: RELEASE_ID
+              value: "personal-site/fb873c3/production/10"
