@@ -66,13 +66,20 @@ spec:
                 secretKeyRef:
                   name: nids-secrets
                   key: NIDS_INGEST_TOKEN
-            # Shadow model (zeek-conn-window-v2): predictions are stored separately and never change
-            # operational labels, counters, alerts or the dashboard. The app unpickles the bundle only
-            # if tree_model.joblib matches this SHA-256 (nids-v6-tree-baseline-v2, passed the reserved
-            # final test 2026-11-05). A load failure is reported but never degrades readiness.
-            - name: NIDS_SHADOW_MODEL_DIR
+            # Operational model: the zeek-conn-window-v2 tree (nids-v6-tree-baseline-v2; passed the
+            # reserved final test 2026-11-05, the live parity re-check 2026-11-07 and 3 days of shadow;
+            # the operator waived the rest of the planned week of shadow).
+            # It labels flows with a warm, undegraded window. The built-in Keras model labels the rest
+            # (cold windows after restarts, flows without v2 features) and runs in shadow on the flows
+            # v2 labeled. If the bundle fails to load or run, flows get the Keras label and /healthz is
+            # degraded, but /readyz stays ready so ingestion continues.
+            # The app unpickles the bundle only if tree_model.joblib matches this SHA-256.
+            # Roll back by setting NIDS_OPERATIONAL_MODEL to keras (v2 returns to shadow).
+            - name: NIDS_OPERATIONAL_MODEL
+              value: v2
+            - name: NIDS_V2_MODEL_DIR
               value: /models/nids-v6-tree-baseline-v2
-            - name: NIDS_SHADOW_MODEL_SHA256
+            - name: NIDS_V2_MODEL_SHA256
               value: e0c5b9fd21a3c19880e53eb9694d6f475e6df5f1731318fd96c2b010b6ac6ba8
           startupProbe:
             httpGet:
@@ -100,7 +107,7 @@ spec:
           volumeMounts:
             - name: nids-data
               mountPath: /data
-            - name: shadow-models
+            - name: nids-models
               mountPath: /models
               readOnly: true
           resources:
@@ -118,7 +125,7 @@ spec:
         # there). They stay out of the public image, a ConfigMap (the bundle is ~1.8 MB) and the DB
         # volume. type Directory means a missing stage blocks the new pod, while maxUnavailable: 0
         # keeps the old pod serving. See docs/nids-shadow-model.md.
-        - name: shadow-models
+        - name: nids-models
           hostPath:
             path: /var/lib/mynids-models
             type: Directory
