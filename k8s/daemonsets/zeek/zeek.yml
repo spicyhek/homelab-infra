@@ -42,8 +42,8 @@ spec:
               mountPath: /zeek-logs
 
         - name: zeek-converter
-          # Pinned separately from k8s/apps/nids: the release workflow only bumps that kustomization.
-          image: ghcr.io/spicyhek/mynids:sha-854a1ac11f50bad578efd5228eaf4b92bfedbe06
+          # Tag set by images: in kustomization.yml, which the mynids release bumps with k8s/apps/nids.
+          image: ghcr.io/spicyhek/mynids
           imagePullPolicy: IfNotPresent
           command:
             - python
