@@ -11,3 +11,10 @@ configMapGenerator:
     namespace: default
     files:
       - local.zeek
+
+# The zeek-converter container runs the mynids image. The mynids release workflow bumps this tag
+# together with k8s/apps/nids, so the converter and the API it posts to stay on the same build.
+# The zeek/zeek images are pinned by digest in zeek.yml and are not affected.
+images:
+  - name: ghcr.io/spicyhek/mynids
+    newTag: sha-854a1ac11f50bad578efd5228eaf4b92bfedbe06
