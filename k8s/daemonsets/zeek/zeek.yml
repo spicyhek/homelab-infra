@@ -42,7 +42,8 @@ spec:
               mountPath: /zeek-logs
 
         - name: zeek-converter
-          image: ghcr.io/spicyhek/mynids:sha-bad602b68ac9f373c9f6377a6240d5475eeb9821
+          # Pinned separately from k8s/apps/nids: the release workflow only bumps that kustomization.
+          image: ghcr.io/spicyhek/mynids:sha-854a1ac11f50bad578efd5228eaf4b92bfedbe06
           imagePullPolicy: IfNotPresent
           command:
             - python
@@ -75,6 +76,11 @@ spec:
             # them. Window state is in memory, so the first ~60 s after a restart are not classified.
             - name: NIDS_EXPORT_FEATURES_V2
               value: "true"
+            # Also scan http.log for web probes (.env, .git, WordPress, PHP paths) and send them to
+            # /api/internal/web-probes beside --endpoint. Needs the nids API at sha-854a1ac or later;
+            # its checkpoint is zeek-forwarder-state.json.http, beside the conn checkpoint.
+            - name: NIDS_HTTP_LOG_PATH
+              value: /zeek-logs/http.log
           volumeMounts:
             - name: zeek-logs
               mountPath: /zeek-logs
