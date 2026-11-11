@@ -5,7 +5,8 @@ one Grafana Alloy replica and one kube-state-metrics replica on the node labeled
 `observability=heavy`. Alloy scrapes a small allowlist every 60 seconds and writes
 it to Grafana Cloud:
 
-- node-exporter: CPU, memory, root filesystem, identity, and scrape health.
+- node-exporter: CPU, memory, root filesystem, disk I/O for each node's
+  physical disk, identity, and scrape health.
 - kube-state-metrics: node Ready, MemoryPressure, DiskPressure, PIDPressure,
   NetworkUnavailable, the unschedulable flag, and scrape health.
 
@@ -19,6 +20,38 @@ the conditions listed above. `node` identifies the node whose state is reported;
 
 The deployment does not include an in-cluster Prometheus server, Grafana,
 Alertmanager, persistent volume, or public endpoint.
+
+## Disk I/O
+
+The `diskstats` collector reports whole physical disks only: `sda` on the
+control plane (USB NVMe) and on worker2 (USB SSD), and `mmcblk0` on worker1 (SD
+card). Eight counters are forwarded per disk, about 24 series in total. They
+exist to measure the control-plane disk contention behind the k3s lease
+timeouts and the footprint of new workloads such as mybuilds.
+
+Per-node queries, with `instance` set to the node name:
+
+```promql
+# Busy time, 0 to 1
+rate(node_disk_io_time_seconds_total{cluster="homelab"}[5m])
+
+# Write throughput, bytes per second
+rate(node_disk_written_bytes_total{cluster="homelab"}[5m])
+
+# Write IOPS
+rate(node_disk_writes_completed_total{cluster="homelab"}[5m])
+
+# Average write latency, seconds
+rate(node_disk_write_time_seconds_total{cluster="homelab"}[5m])
+  / rate(node_disk_writes_completed_total{cluster="homelab"}[5m])
+```
+
+A one-week summary for a before/after comparison (run at the end of the week;
+repeat with `quantile_over_time(0.95, ...)` for the p95):
+
+```promql
+avg_over_time(rate(node_disk_io_time_seconds_total{cluster="homelab"}[5m])[7d:5m])
+```
 
 ## Suggested Grafana Cloud alerts
 
