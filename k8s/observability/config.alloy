@@ -54,7 +54,7 @@ prometheus.relabel "node_exporter" {
 		action        = "keep"
 		source_labels = ["__name__", "mode", "mountpoint"]
 		separator     = ";"
-		regex         = "node_cpu_seconds_total;idle;|node_memory_(MemAvailable|MemTotal)_bytes;;|node_filesystem_(avail|size)_bytes;;/|node_uname_info;;|up;;"
+		regex         = "node_cpu_seconds_total;idle;|node_memory_(MemAvailable|MemTotal)_bytes;;|node_filesystem_(avail|size)_bytes;;/|node_disk_(read_bytes|written_bytes|reads_completed|writes_completed|read_time_seconds|write_time_seconds|io_time_seconds|io_time_weighted_seconds)_total;;|node_uname_info;;|up;;"
 	}
 }
 

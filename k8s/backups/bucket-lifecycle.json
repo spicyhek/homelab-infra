@@ -1,0 +1,39 @@
+{
+  "Rules": [
+    {
+      "ID": "Move backups to One-Zone Standard IA",
+      "Filter": {
+        "Prefix": "backups/"
+      },
+      "Status": "Enabled",
+      "Transitions": [
+        {
+          "Days": 7,
+          "StorageClass": "ONEZONE_IA"
+        }
+      ],
+      "NoncurrentVersionTransitions": [
+        {
+          "NoncurrentDays": 7,
+          "StorageClass": "ONEZONE_IA"
+        }
+      ]
+    },
+    {
+      "ID": "Expire replaced mybuilds Litestream files",
+      "Filter": {
+        "Prefix": "mybuilds/"
+      },
+      "Status": "Enabled",
+      "NoncurrentVersionExpiration": {
+        "NoncurrentDays": 7
+      },
+      "Expiration": {
+        "ExpiredObjectDeleteMarker": true
+      },
+      "AbortIncompleteMultipartUpload": {
+        "DaysAfterInitiation": 1
+      }
+    }
+  ]
+}
