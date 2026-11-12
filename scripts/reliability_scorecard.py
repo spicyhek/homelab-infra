@@ -31,10 +31,12 @@ METRICS = (
 APPLICATION_WORKFLOWS = {
     "mynids": "release.yml",
     "homelab-hosted-personal-site": "release.yml",
+    "mybuilds": "release.yml",
 }
 DEPLOYMENT_NAMES = {
     "mynids": "mynids",
     "homelab-hosted-personal-site": "personal-site",
+    "mybuilds": "mybuilds",
 }
 MAX_CLOUDWATCH_DATAPOINTS = 1_440
 

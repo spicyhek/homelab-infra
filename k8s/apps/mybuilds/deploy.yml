@@ -1,0 +1,207 @@
+# mybuilds: one SQLite writer with a Litestream replica in S3.
+# See README.md in this directory for the Secrets, placement and tunnel route.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mybuilds-data
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mybuilds
+  namespace: default
+spec:
+  replicas: 1 # SQLite has one writer
+  revisionHistoryLimit: 3
+  # The old pod must release the database (and Litestream its replica
+  # position) before the new one opens it, so never run two at once.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: mybuilds
+  template:
+    metadata:
+      labels:
+        app: mybuilds
+    spec:
+      # local-path binds the volume to the node it is first created on.
+      # worker2 boots from a USB SSD; worker1 runs on an SD card.
+      nodeSelector:
+        kubernetes.io/hostname: homelab-worker2
+      # No Kubernetes API access until the runtime watch (M2) brings its
+      # own ServiceAccount and read-only Role.
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        # Restores the database from S3 when the volume is empty, such as
+        # after the node's disk is replaced. A no-op otherwise, and on the
+        # very first start when the replica is still empty.
+        - name: litestream-restore
+          image: litestream/litestream:0.5.17@sha256:4b02b9859a6b6b4087d8b8944e15f7e984bd7957cba322bbeee38b0e27b9656a
+          args:
+            - restore
+            - -config
+            - /etc/litestream/litestream.yml
+            - -if-db-not-exists
+            - -if-replica-exists
+            - /data/mybuilds.db
+          envFrom:
+            - secretRef:
+                name: mybuilds-litestream-aws
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: litestream-config
+              mountPath: /etc/litestream
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          securityContext: &restricted
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources: &litestream-resources
+            requests:
+              cpu: "10m"
+              memory: "48Mi"
+            limits:
+              cpu: "200m"
+              memory: "96Mi"
+        # Native sidecar: starts before the app and stops after it, so the
+        # last WAL frames are shipped on shutdown.
+        - name: litestream
+          image: litestream/litestream:0.5.17@sha256:4b02b9859a6b6b4087d8b8944e15f7e984bd7957cba322bbeee38b0e27b9656a
+          restartPolicy: Always
+          args:
+            - replicate
+            - -config
+            - /etc/litestream/litestream.yml
+          envFrom:
+            - secretRef:
+                name: mybuilds-litestream-aws
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: litestream-config
+              mountPath: /etc/litestream
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          securityContext: *restricted
+          resources: *litestream-resources
+      containers:
+        - name: mybuilds
+          image: ghcr.io/spicyhek/mybuilds
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: metrics
+              containerPort: 9090
+          env:
+            - name: MYBUILDS_DB_PATH
+              value: /data/mybuilds.db
+            - name: MYBUILDS_LOG_LEVEL
+              value: info
+            - name: MYBUILDS_GITHUB_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: mybuilds-ingest
+                  key: MYBUILDS_GITHUB_WEBHOOK_SECRET
+                  optional: true
+            - name: MYBUILDS_CI_EVENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: mybuilds-ingest
+                  key: MYBUILDS_CI_EVENT_SECRET
+                  optional: true
+            - name: MYBUILDS_ARGOCD_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: mybuilds-ingest
+                  key: MYBUILDS_ARGOCD_TOKEN
+                  optional: true
+          startupProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            # SQLite spills large sorts to a temp directory.
+            - name: tmp
+              mountPath: /tmp
+          securityContext: *restricted
+          resources:
+            requests:
+              cpu: "25m"
+              memory: "48Mi"
+            limits:
+              cpu: "500m"
+              memory: "160Mi"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: mybuilds-data
+        - name: litestream-config
+          configMap:
+            name: mybuilds-litestream
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mybuilds
+  namespace: default
+spec:
+  selector:
+    app: mybuilds
+  ports:
+    # The tunnel route points at this port only.
+    - name: http
+      port: 80
+      targetPort: http
+    # Cluster-internal; never routed through the tunnel.
+    - name: metrics
+      port: 9090
+      targetPort: metrics
+  type: ClusterIP

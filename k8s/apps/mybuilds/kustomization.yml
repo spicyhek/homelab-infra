@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - deploy.yml
+
+# The hash suffix restarts the pod when the Litestream config changes.
+configMapGenerator:
+  - name: mybuilds-litestream
+    namespace: default
+    files:
+      - litestream.yml
+
+images:
+  - name: ghcr.io/spicyhek/mybuilds
+    digest: sha256:a634f97e686a851107242728865b407b266feb008f35d6fc39e175551d99ff66
+
+patches:
+  - path: release-patch.yml
