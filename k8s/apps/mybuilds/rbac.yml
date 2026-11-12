@@ -1,0 +1,36 @@
+# Read-only access for mybuilds' runtime watch. The watch only asks for objects labeled
+# mybuilds.brendanmanley.com/managed=true, but RBAC cannot filter by label,
+# so the Role covers the namespace.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mybuilds
+  namespace: default
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: mybuilds-runtime-watch
+  namespace: default
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: mybuilds-runtime-watch
+  namespace: default
+subjects:
+  - kind: ServiceAccount
+    name: mybuilds
+    namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: mybuilds-runtime-watch
