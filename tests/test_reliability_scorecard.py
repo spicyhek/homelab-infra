@@ -107,6 +107,9 @@ class ReliabilityScorecardTests(unittest.TestCase):
                 return [
                     {"commit": {"message": "Deploy mynids sha-abc123 (#8)"}},
                     {"commit": {"message": "Deploy personal-site sha-def456 (#7)"}},
+                    {"commit": {"message": "Deploy mybuilds sha-0a1b2c3 (#9)"}},
+                    # A human edit to an app directory is not a promotion.
+                    {"commit": {"message": "Raise mybuilds memory limit (#10)"}},
                 ]
             return {
                 "workflow_runs": [
@@ -127,7 +130,10 @@ class ReliabilityScorecardTests(unittest.TestCase):
             requester=requester,
         )
 
-        self.assertEqual(len(results), 2)
+        self.assertEqual(
+            {result.application for result in results},
+            {"mynids", "homelab-hosted-personal-site", "mybuilds"},
+        )
         self.assertTrue(all(result.promotions == 1 for result in results))
         self.assertTrue(all(result.workflow_success_pct == 100 for result in results))
         self.assertTrue(all(result.median_workflow_minutes == 10 for result in results))

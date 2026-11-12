@@ -104,6 +104,8 @@ jobs:
         include:
           - name: cloudflared
             path: k8s/edge/cloudflared
+          - name: mybuilds
+            path: k8s/apps/mybuilds
           - name: nids
             path: k8s/apps/nids
           - name: nids-backup

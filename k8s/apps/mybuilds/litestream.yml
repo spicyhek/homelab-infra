@@ -1,0 +1,9 @@
+# Litestream configuration, mounted at /etc/litestream/litestream.yml.
+# Credentials come from the mybuilds-litestream-aws Secret as AWS_* variables.
+dbs:
+  - path: /data/mybuilds.db
+    replica:
+      type: s3
+      bucket: homelab-backups-062700375181-us-west-1-an
+      path: mybuilds
+      region: us-west-1
