@@ -3,6 +3,7 @@ kind: Kustomization
 
 resources:
   - deploy.yml
+  - rbac.yml
 
 # The hash suffix restarts the pod when the Litestream config changes.
 configMapGenerator:

@@ -37,8 +37,10 @@ spec:
       # worker2 boots from a USB SSD; worker1 runs on an SD card.
       nodeSelector:
         kubernetes.io/hostname: homelab-worker2
-      # No Kubernetes API access until the runtime watch (M2) brings its
-      # own ServiceAccount and read-only Role.
+      # The runtime watch reads Deployments, ReplicaSets and Pods through
+      # this ServiceAccount (rbac.yml). Its token is mounted into the app
+      # container only, below, not automounted into the Litestream ones.
+      serviceAccountName: mybuilds
       automountServiceAccountToken: false
       enableServiceLinks: false
       terminationGracePeriodSeconds: 30
@@ -168,6 +170,10 @@ spec:
             # SQLite spills large sorts to a temp directory.
             - name: tmp
               mountPath: /tmp
+            # Where client-go's in-cluster config looks for the token.
+            - name: kube-api-access
+              mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+              readOnly: true
           securityContext: *restricted
           resources:
             requests:
@@ -186,6 +192,24 @@ spec:
         - name: tmp
           emptyDir:
             sizeLimit: 64Mi
+        # The same projected volume automount would create: a short-lived,
+        # auto-rotated token, the cluster CA and the namespace.
+        - name: kube-api-access
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  expirationSeconds: 3607
+              - configMap:
+                  name: kube-root-ca.crt
+                  items:
+                    - key: ca.crt
+                      path: ca.crt
+              - downwardAPI:
+                  items:
+                    - path: namespace
+                      fieldRef:
+                        fieldPath: metadata.namespace
 ---
 apiVersion: v1
 kind: Service

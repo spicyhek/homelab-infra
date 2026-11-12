@@ -9,6 +9,7 @@ is empty.
 | File | Purpose |
 | --- | --- |
 | [`deploy.yml`](deploy.yml) | PVC, Deployment (Recreate, one replica), Service |
+| [`rbac.yml`](rbac.yml) | ServiceAccount and read-only Role for the runtime watch |
 | [`litestream.yml`](litestream.yml) | Litestream config, mounted through a generated ConfigMap |
 | [`release-patch.yml`](release-patch.yml) | Release annotations and `RELEASE_ID`, rewritten by mybuilds' `bump-gitops` job |
 | [`kustomization.yml`](kustomization.yml) | Image digest pin and the pieces above |
@@ -147,8 +148,32 @@ have written a snapshot under `mybuilds/` within a minute.
   the S3 replica stays.
 
 The security context is restricted: uid 65532 (the image's `nonroot`), no
-capabilities, read-only root filesystem, no service account token. The
-runtime watch in M2 adds a ServiceAccount with a read-only Role.
+capabilities, read-only root filesystem.
+
+## Runtime watch
+
+The Rollout stage comes from a read-only watch of the Deployments,
+ReplicaSets and Pods labeled `mybuilds.brendanmanley.com/managed=true`
+([`rbac.yml`](rbac.yml)):
+
+- ServiceAccount `mybuilds` with Role `mybuilds-runtime-watch`: `get`,
+  `list` and `watch` on `deployments` and `replicasets` (apps) and `pods`
+  in `default`. No Secrets, exec, logs or write verbs.
+- The token is not automounted. A projected volume mounts a short-lived
+  token, the cluster CA and the namespace into the `mybuilds` container only,
+  so the Litestream containers have no API access.
+- The informers resync every 30 minutes from their cache; only their
+  initial list and watch reach the API server.
+
+Check the permissions with:
+
+```bash
+kubectl auth can-i --list -n default --as=system:serviceaccount:default:mybuilds
+```
+
+If the Role is missing, the app still runs; it logs list errors and its
+releases stop at Reconcile. `mybuilds_runtime_watch_synced` on the metrics
+port turns 1 once the watch has listed everything.
 
 ## Litestream replica
 
