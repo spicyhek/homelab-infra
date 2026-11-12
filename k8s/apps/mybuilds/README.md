@@ -40,8 +40,8 @@ and squash-merges a `Deploy mybuilds sha-...` pull request here, and Argo CD
 syncs it. The reliability scorecard counts these commits as mybuilds
 promotions, next to its release workflow runs.
 
-`mybuilds-ingest` can come later: each ingestion endpoint answers 503 until
-its key is present.
+Each ingestion endpoint answers 503 until its key is in `mybuilds-ingest`
+and the pod has restarted.
 
 ## Secrets
 
@@ -54,7 +54,7 @@ Both are created by hand and never stored in Git.
 | --- | --- |
 | `MYBUILDS_GITHUB_WEBHOOK_SECRET` | The webhook on each tracked repository (Workflow runs and Workflow jobs events) |
 | `MYBUILDS_CI_EVENT_SECRET` | The `MYBUILDS_CI_EVENT_SECRET` Actions secret of each tracked repository |
-| `MYBUILDS_ARGOCD_TOKEN` | `argocd-notifications-secret`, referenced by the mybuilds webhook service |
+| `MYBUILDS_ARGOCD_TOKEN` | The `mybuilds-argocd-token` key of `argocd-notifications-secret`, used by the `mybuilds` webhook service in [`../../argocd/notifications`](../../argocd/notifications) |
 
 Generate the values into a file outside the repository, create the Secret
 from it, then copy each value to the place in the table and delete the file:
@@ -71,6 +71,44 @@ Changing a key needs a pod restart (`kubectl -n default rollout restart
 deployment/mybuilds`), since the values are read at startup. The payloads and
 signatures are in mybuilds'
 [`docs/ingestion.md`](https://github.com/spicyhek/mybuilds/blob/main/docs/ingestion.md).
+
+### Wiring up a tracked repository
+
+Copy each value straight from the Secret so it is never printed. Run this
+where `kubectl` can read Secrets and `gh` is signed in as the repository
+owner; `secret` decodes one key of `mybuilds-ingest`:
+
+```bash
+repo=spicyhek/homelab-hosted-personal-site
+secret() { kubectl -n default get secret mybuilds-ingest -o "jsonpath={.data.$1}" | base64 -d; }
+
+# CI events: read by the release workflow's "Report ... to mybuilds" steps.
+secret MYBUILDS_CI_EVENT_SECRET | gh secret set MYBUILDS_CI_EVENT_SECRET --repo "$repo"
+
+# Webhook: Workflow runs and Workflow jobs only. GitHub masks the secret in its reply.
+jq -n --arg secret "$(secret MYBUILDS_GITHUB_WEBHOOK_SECRET)" '{
+    name: "web", active: true, events: ["workflow_run", "workflow_job"],
+    config: {url: "https://mybuilds.brendanmanley.com/hooks/github",
+             content_type: "json", insecure_ssl: "0", secret: $secret}}' |
+  gh api "repos/$repo/hooks" --input - --jq '.id'
+```
+
+The Argo CD token is set once for the cluster; the notifications controller
+reloads its Secret without a restart. The value is copied base64-encoded, as
+stored:
+
+```bash
+token="$(kubectl -n default get secret mybuilds-ingest -o jsonpath='{.data.MYBUILDS_ARGOCD_TOKEN}')"
+kubectl -n argocd patch secret argocd-notifications-secret --type merge \
+  --patch "{\"data\":{\"mybuilds-argocd-token\":\"${token}\"}}"
+unset token
+```
+
+An Application reports to mybuilds once it carries the four
+`notifications.argoproj.io/subscribe.mybuilds-*.mybuilds` annotations, as
+[`personal-site.yml`](../../argocd/applications/personal-site.yml) does, and
+is in mybuilds' service map. GitHub's webhook page lists each delivery and its
+response, which is the quickest check after the first push.
 
 ## Tunnel route
 

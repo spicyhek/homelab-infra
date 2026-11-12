@@ -1,0 +1,121 @@
+# Argo CD Notifications configuration. The ConfigMap ships empty with the
+# Argo CD install; the argocd-notifications Application manages its contents
+# from here. Payload contract: mybuilds' docs/ingestion.md.
+#
+# Each trigger has its own template because a template cannot tell which
+# trigger fired. Triggers and templates are prefixed with mybuilds- so that
+# subscribing an Application to another service never sends these bodies.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-notifications-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-notifications-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  # Cluster-internal, so a Cloudflare or tunnel outage cannot drop deploy
+  # evidence. The token is the mybuilds-argocd-token key of
+  # argocd-notifications-secret, created by hand.
+  service.webhook.mybuilds: |
+    url: http://mybuilds.default.svc.cluster.local/hooks/argocd
+    headers:
+      - name: Content-Type
+        value: application/json
+      - name: Authorization
+        value: Bearer $mybuilds-argocd-token
+
+  # oncePer keeps self-heal re-syncs of the same commit from re-sending.
+  trigger.mybuilds-on-sync-running: |
+    - when: app.status.operationState != nil and app.status.operationState.phase in ['Running']
+      oncePer: app.status.operationState?.operation?.sync?.revision
+      send: [mybuilds-on-sync-running]
+  trigger.mybuilds-on-sync-succeeded: |
+    - when: app.status.operationState != nil and app.status.operationState.phase in ['Succeeded']
+      oncePer: app.status.operationState?.syncResult?.revision
+      send: [mybuilds-on-sync-succeeded]
+  trigger.mybuilds-on-sync-failed: |
+    - when: app.status.operationState != nil and app.status.operationState.phase in ['Error', 'Failed']
+      oncePer: app.status.operationState?.operation?.sync?.revision
+      send: [mybuilds-on-sync-failed]
+  trigger.mybuilds-on-health-degraded: |
+    - when: app.status.health.status == 'Degraded'
+      send: [mybuilds-on-health-degraded]
+
+  # The sync revision is the resolved commit from syncResult once the sync
+  # has one, and the operation's target revision before that.
+  template.mybuilds-on-sync-running: |
+    webhook:
+      mybuilds:
+        method: POST
+        body: |
+          {{- $op := .app.status.operationState -}}
+          {{- $rev := $op.operation.sync.revision -}}
+          {{- with $op.syncResult }}{{ $rev = .revision }}{{ end -}}
+          {
+            "trigger": "on-sync-running",
+            "application": "{{.app.metadata.name}}",
+            "revision": "{{$rev}}",
+            "sync_status": "{{.app.status.sync.status}}",
+            "health_status": "{{.app.status.health.status}}",
+            "operation_phase": "{{$op.phase}}",
+            "started_at": "{{$op.startedAt}}",
+            "finished_at": "{{$op.finishedAt}}",
+            "commit_message": {{toJson (call .repo.GetCommitMetadata $rev).Message}},
+            "commit_author": {{toJson (call .repo.GetCommitMetadata $rev).Author}}
+          }
+  template.mybuilds-on-sync-succeeded: |
+    webhook:
+      mybuilds:
+        method: POST
+        body: |
+          {{- $op := .app.status.operationState -}}
+          {{- $rev := $op.operation.sync.revision -}}
+          {{- with $op.syncResult }}{{ $rev = .revision }}{{ end -}}
+          {
+            "trigger": "on-sync-succeeded",
+            "application": "{{.app.metadata.name}}",
+            "revision": "{{$rev}}",
+            "sync_status": "{{.app.status.sync.status}}",
+            "health_status": "{{.app.status.health.status}}",
+            "operation_phase": "{{$op.phase}}",
+            "started_at": "{{$op.startedAt}}",
+            "finished_at": "{{$op.finishedAt}}",
+            "commit_message": {{toJson (call .repo.GetCommitMetadata $rev).Message}},
+            "commit_author": {{toJson (call .repo.GetCommitMetadata $rev).Author}}
+          }
+  template.mybuilds-on-sync-failed: |
+    webhook:
+      mybuilds:
+        method: POST
+        body: |
+          {{- $op := .app.status.operationState -}}
+          {{- $rev := $op.operation.sync.revision -}}
+          {{- with $op.syncResult }}{{ $rev = .revision }}{{ end -}}
+          {
+            "trigger": "on-sync-failed",
+            "application": "{{.app.metadata.name}}",
+            "revision": "{{$rev}}",
+            "sync_status": "{{.app.status.sync.status}}",
+            "health_status": "{{.app.status.health.status}}",
+            "operation_phase": "{{$op.phase}}",
+            "started_at": "{{$op.startedAt}}",
+            "finished_at": "{{$op.finishedAt}}",
+            "commit_message": {{toJson (call .repo.GetCommitMetadata $rev).Message}},
+            "commit_author": {{toJson (call .repo.GetCommitMetadata $rev).Author}}
+          }
+  # Health has no operation of its own; the revision is the one deployed.
+  template.mybuilds-on-health-degraded: |
+    webhook:
+      mybuilds:
+        method: POST
+        body: |
+          {
+            "trigger": "on-health-degraded",
+            "application": "{{.app.metadata.name}}",
+            "revision": "{{.app.status.sync.revision}}",
+            "sync_status": "{{.app.status.sync.status}}",
+            "health_status": "{{.app.status.health.status}}",
+            "commit_message": {{toJson (call .repo.GetCommitMetadata .app.status.sync.revision).Message}},
+            "commit_author": {{toJson (call .repo.GetCommitMetadata .app.status.sync.revision).Author}}
+          }

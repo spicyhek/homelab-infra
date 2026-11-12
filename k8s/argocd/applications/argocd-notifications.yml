@@ -1,0 +1,28 @@
+# Argo CD Notifications triggers, templates and services. Argo CD itself is
+# installed by hand; this only manages argocd-notifications-cm.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd-notifications
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/spicyhek/homelab-infra.git
+    targetRevision: main
+    path: k8s/argocd/notifications
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    # The ConfigMap is part of the Argo CD install, so removing this
+    # Application must not delete it.
+    automated:
+      prune: false
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m

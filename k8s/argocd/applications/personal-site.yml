@@ -3,6 +3,12 @@ kind: Application
 metadata:
   name: personal-site
   namespace: argocd
+  # Sync and health evidence for mybuilds (k8s/argocd/notifications).
+  annotations:
+    notifications.argoproj.io/subscribe.mybuilds-on-sync-running.mybuilds: ""
+    notifications.argoproj.io/subscribe.mybuilds-on-sync-succeeded.mybuilds: ""
+    notifications.argoproj.io/subscribe.mybuilds-on-sync-failed.mybuilds: ""
+    notifications.argoproj.io/subscribe.mybuilds-on-health-degraded.mybuilds: ""
 spec:
   project: default
   source:

@@ -102,6 +102,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - name: argocd-notifications
+            path: k8s/argocd/notifications
           - name: cloudflared
             path: k8s/edge/cloudflared
           - name: mybuilds
