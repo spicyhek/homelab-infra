@@ -1,6 +1,6 @@
 # Homelab infrastructure
 
-This repo hosts my site, network intrusion detection service, and some supporting edge services for now. External reliability services exist in AWS and resource monitoring exists in Grafana Cloud. ArgoCD reconciles using this repo, so the head of this repo reflects the current state of the infrastructure.
+This repo hosts my site, network intrusion detection service, release pipeline tracker, and some supporting edge services for now. External reliability services exist in AWS and resource monitoring exists in Grafana Cloud. ArgoCD reconciles using this repo, so the head of this repo reflects the current state of the infrastructure.
 
 ## Current topology
 
