@@ -2,6 +2,11 @@
 # Cloudflare Worker on the ingestion paths of mybuilds.brendanmanley.com puts
 # each GitHub, CI and Argo CD delivery on this queue, and mybuilds drains it,
 # so a restart of its one pod loses nothing.
+#
+# The CI apply role (homelab-terraform-apply, managed by hand) is scoped by
+# name: it may manage SQS queues named mybuilds-ingest* and IAM users named
+# mybuilds-ingest-*. Keep new names under those prefixes or widen the role
+# first.
 
 resource "aws_sqs_queue" "mybuilds_ingest_dlq" {
   name                      = "mybuilds-ingest-dlq"
