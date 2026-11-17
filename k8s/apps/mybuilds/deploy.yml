@@ -22,7 +22,7 @@ metadata:
     # mybuilds tracks its own rollouts (its docs/self-tracking.md).
     mybuilds.brendanmanley.com/managed: "true"
 spec:
-  replicas: 1 # SQLite has one writer
+  replicas: 0 # SQLite has one writer
   revisionHistoryLimit: 3
   # The old pod must release the database (and Litestream its replica
   # position) before the new one opens it, so never run two at once.
