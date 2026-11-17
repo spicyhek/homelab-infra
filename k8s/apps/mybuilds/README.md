@@ -44,6 +44,21 @@ promotions, next to its release workflow runs.
 Each ingestion endpoint answers 503 until its key is in `mybuilds-ingest`
 and the pod has restarted.
 
+## Tracking itself
+
+mybuilds is in its own service map, so its deploys appear next to
+personal-site's (its `docs/self-tracking.md`). That needs the same wiring as
+any tracked repository ([below](#wiring-up-a-tracked-repository), with
+`repo=spicyhek/mybuilds`), the `managed` label on the Deployment and the
+notification annotations on the Application, both in this directory.
+
+A deploy of mybuilds replaces the one pod (`Recreate`), so nothing is
+watching for the few seconds in between. The old pod records the start of
+the rollout before it stops; the new pod finds the finished rollout in its
+first list and rebuilds the pod steps from object timestamps, which the UI
+labels *reconstructed*. The new pod then verifies its own public URL, which
+is why the AWS probe stays the independent check of mybuilds.
+
 ## Secrets
 
 Both are created by hand and never stored in Git.
@@ -111,6 +126,49 @@ An Application reports to mybuilds once it carries the four
 is in mybuilds' service map. GitHub's webhook page lists each delivery and its
 response, which is the quickest check after the first push.
 
+## Ingestion buffer
+
+GitHub, CI and Argo CD deliveries go through a Cloudflare Worker that queues
+them in SQS, and mybuilds drains the queue, so a restart of the pod loses
+nothing (mybuilds' `docs/buffer.md`). The queues and the two IAM users are in
+[`../../../terraform/reliability-control-plane/mybuilds-ingest.tf`](../../../terraform/reliability-control-plane/mybuilds-ingest.tf);
+their access keys are created by hand, like the Litestream user's, so no
+secret sits in the Terraform state. To set it up:
+
+1. Merge the Terraform change and let the `production` apply run.
+2. Create the keys and the Secret. The consumer is off until the Secret
+   exists, and reads it at startup:
+
+   ```bash
+   umask 077
+   aws iam create-access-key --user-name mybuilds-ingest-consumer \
+     --query 'AccessKey.[AccessKeyId,SecretAccessKey]' --output text |
+     awk '{print "MYBUILDS_SQS_ACCESS_KEY_ID=" $1; print "MYBUILDS_SQS_SECRET_ACCESS_KEY=" $2}' > ~/mybuilds-sqs.env
+   echo "MYBUILDS_SQS_QUEUE_URL=https://sqs.us-west-1.amazonaws.com/062700375181/mybuilds-ingest" >> ~/mybuilds-sqs.env
+   kubectl -n default create secret generic mybuilds-sqs --from-env-file="$HOME/mybuilds-sqs.env"
+   rm ~/mybuilds-sqs.env
+   kubectl -n default rollout restart deployment/mybuilds
+   ```
+
+3. Give the Worker its secrets, from the mybuilds repository's `worker/`
+   directory, signed in to Cloudflare with `wrangler login`: the
+   `mybuilds-ingest-worker` user's key (`aws iam create-access-key
+   --user-name mybuilds-ingest-worker`) as `AWS_ACCESS_KEY_ID` and
+   `AWS_SECRET_ACCESS_KEY`, and the three keys of `mybuilds-ingest` under
+   their own names, each with `wrangler secret put <NAME>`.
+4. Add `CLOUDFLARE_API_TOKEN` (Workers Scripts and Workers Routes edit) and
+   `CLOUDFLARE_ACCOUNT_ID` to the mybuilds repository's secrets. The release
+   workflow deploys the Worker and its routes whenever `worker/` changes;
+   the first deploy can also be `wrangler deploy` by hand.
+5. In the Cloudflare dashboard, set the Worker's route to **fail open**, so
+   that past the free plan's daily limit requests fall through the tunnel to
+   mybuilds instead of being refused.
+
+The Argo CD notification URL in [`../../argocd/notifications`](../../argocd/notifications)
+is the public one for the same reason. A delivery that fails five times
+lands in `mybuilds-ingest-dlq`; inspect it with `aws sqs receive-message`
+and redrive it from the console once the cause is fixed.
+
 ## Tunnel route
 
 The tunnel is remotely managed, so its routes live in the Cloudflare
@@ -120,8 +178,8 @@ dashboard, not here. Add a public hostname to the homelab tunnel:
 - Service: `HTTP` `mybuilds.default.svc.cluster.local:80`
 
 Only Service port 80 is routed. `/metrics` is on port 9090 and stays
-cluster-internal. The M4 Cloudflare Worker takes over the ingestion paths on
-the same hostname without changing this route.
+cluster-internal. The Worker route above takes the ingestion paths on the
+same hostname without changing this route.
 
 ## After deploying
 

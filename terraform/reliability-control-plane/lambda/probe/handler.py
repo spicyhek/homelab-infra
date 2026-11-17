@@ -13,6 +13,7 @@ METRICS = {
     "origin": "OriginHealthy",
     "nids": "NidsHealthy",
     "cluster": "ClusterHealthy",
+    "mybuilds": "MybuildsHealthy",
 }
 PROBE_METRIC = "ProbeExecutionHealthy"
 
@@ -72,11 +73,20 @@ def check_nids():
             and payload.get("model_loaded") is True and payload.get("ingest_enabled") is True)
 
 
+def check_mybuilds():
+    # mybuilds cannot record its own failed deploy (its docs/self-tracking.md),
+    # so this is the independent check of it. /healthz answers from the
+    # process, through Cloudflare and the tunnel.
+    status, _body = fetch(os.environ["MYBUILDS_HEALTH_URL"])
+    return 200 <= status < 300
+
+
 CHECKS = (
     ("site", check_site),
     ("origin", check_origin),
     ("nids", check_nids),
     ("cluster", check_cluster),
+    ("mybuilds", check_mybuilds),
 )
 
 

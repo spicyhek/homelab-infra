@@ -14,11 +14,15 @@ metadata:
     app.kubernetes.io/name: argocd-notifications-cm
     app.kubernetes.io/part-of: argocd
 data:
-  # Cluster-internal, so a Cloudflare or tunnel outage cannot drop deploy
-  # evidence. The token is the mybuilds-argocd-token key of
-  # argocd-notifications-secret, created by hand.
+  # The public URL: the Cloudflare Worker in front of it queues each
+  # notification (mybuilds' docs/buffer.md), so one sent while mybuilds is
+  # restarting, as during its own deploy, is kept. Argo CD sends outbound,
+  # so the tunnel is not on this path; without the Worker, the request goes
+  # through the tunnel to mybuilds as before. The token is the
+  # mybuilds-argocd-token key of argocd-notifications-secret, created by
+  # hand.
   service.webhook.mybuilds: |
-    url: http://mybuilds.default.svc.cluster.local/hooks/argocd
+    url: https://mybuilds.brendanmanley.com/hooks/argocd
     headers:
       - name: Content-Type
         value: application/json
