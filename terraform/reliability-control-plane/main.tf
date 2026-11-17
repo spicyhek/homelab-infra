@@ -37,6 +37,12 @@ locals {
         evaluation_periods  = 3
         datapoints_to_alarm = 3
       }
+      mybuilds = {
+        name                = "MybuildsHealthy"
+        period              = 60
+        evaluation_periods  = 3
+        datapoints_to_alarm = 3
+      }
     },
     local.backup_enabled ? {
       backup = {
@@ -97,6 +103,7 @@ resource "aws_lambda_function" "probe" {
     SITE_MARKER                 = var.site_marker,
     ORIGIN_STATUS_URL           = local.origin_status_url,
     NIDS_HEALTH_URL             = var.nids_health_url,
+    MYBUILDS_HEALTH_URL         = var.mybuilds_health_url,
     MAX_SNAPSHOT_AGE_SECONDS    = tostring(var.max_snapshot_age_seconds),
     METRIC_NAMESPACE            = local.metric_namespace
     EXPECTED_CLUSTER_NODES_JSON = jsonencode(var.expected_cluster_nodes)

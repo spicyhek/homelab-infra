@@ -18,6 +18,9 @@ kind: Deployment
 metadata:
   name: mybuilds
   namespace: default
+  labels:
+    # mybuilds tracks its own rollouts (its docs/self-tracking.md).
+    mybuilds.brendanmanley.com/managed: "true"
 spec:
   replicas: 1 # SQLite has one writer
   revisionHistoryLimit: 3
@@ -32,6 +35,7 @@ spec:
     metadata:
       labels:
         app: mybuilds
+        mybuilds.brendanmanley.com/managed: "true"
     spec:
       # local-path binds the volume to the node it is first created on.
       # worker2 boots from a USB SSD; worker1 runs on an SD card.
@@ -142,6 +146,27 @@ spec:
                 secretKeyRef:
                   name: mybuilds-ingest
                   key: MYBUILDS_ARGOCD_TOKEN
+                  optional: true
+            # The ingestion buffer's queue (README, "Ingestion buffer").
+            # Without the Secret, the consumer is off and only the direct
+            # endpoints receive.
+            - name: MYBUILDS_SQS_QUEUE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: mybuilds-sqs
+                  key: MYBUILDS_SQS_QUEUE_URL
+                  optional: true
+            - name: MYBUILDS_SQS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: mybuilds-sqs
+                  key: MYBUILDS_SQS_ACCESS_KEY_ID
+                  optional: true
+            - name: MYBUILDS_SQS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mybuilds-sqs
+                  key: MYBUILDS_SQS_SECRET_ACCESS_KEY
                   optional: true
           startupProbe:
             httpGet:

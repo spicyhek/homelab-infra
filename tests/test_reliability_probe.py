@@ -71,6 +71,14 @@ class ReliabilityProbeTests(unittest.TestCase):
         self.assertEqual(published["ProbeExecutionHealthy"], 1)
         self.assertTrue(result["probe_execution"])
 
+    def test_mybuilds_check_needs_a_2xx_from_healthz(self):
+        with mock.patch.dict(os.environ, {"MYBUILDS_HEALTH_URL": "https://mybuilds.example/healthz"}):
+            with mock.patch.object(probe, "fetch", return_value=(200, b"ok\n")) as fetch:
+                self.assertTrue(probe.check_mybuilds())
+                fetch.assert_called_once_with("https://mybuilds.example/healthz")
+            with mock.patch.object(probe, "fetch", return_value=(503, b"database unavailable\n")):
+                self.assertFalse(probe.check_mybuilds())
+
     def test_metric_publication_failure_marks_probe_execution_unhealthy(self):
         checks = tuple((key, lambda: True) for key in probe.METRICS)
         FAKE_CLOUDWATCH.fail_metric = "NidsHealthy"

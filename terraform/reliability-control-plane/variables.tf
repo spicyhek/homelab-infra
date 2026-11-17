@@ -37,6 +37,11 @@ variable "nids_health_url" {
   description = "NIDS JSON health endpoint"
   type        = string
 }
+variable "mybuilds_health_url" {
+  description = "mybuilds liveness endpoint; it cannot record its own failed deploy"
+  type        = string
+  default     = "https://mybuilds.brendanmanley.com/healthz"
+}
 variable "max_snapshot_age_seconds" {
   type    = number
   default = 300
