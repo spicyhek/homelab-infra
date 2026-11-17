@@ -6,7 +6,7 @@ resources:
 
 images:
   - name: ghcr.io/spicyhek/homelab-hosted-personal-site
-    digest: sha256:c21ff4254cc82f4d27d0075b27dd5a3f3ce404e282b82090d8ae7162598f642a
+    digest: sha256:a7ad41bd51c3b90e28cfbabbc4868fac0799f97faa335c017927c8a927492377
 
 patches:
   - path: release-patch.yml
