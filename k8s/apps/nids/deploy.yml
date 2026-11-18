@@ -33,6 +33,11 @@ kind: Deployment
 metadata:
   name: nids
   namespace: default
+  # mybuilds watches Deployments, ReplicaSets and pods with this label. The
+  # release metadata is in release-patch.yml, rewritten by mynids' release
+  # workflow.
+  labels:
+    mybuilds.brendanmanley.com/managed: "true"
 spec:
   replicas: 1 # Keep one steady-state writer for SQLite
   minReadySeconds: 5
@@ -48,6 +53,7 @@ spec:
     metadata:
       labels:
         app: nids
+        mybuilds.brendanmanley.com/managed: "true"
     spec:
       nodeSelector:
         kubernetes.io/hostname: homelab-control-plane
