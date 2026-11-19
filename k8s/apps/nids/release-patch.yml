@@ -5,19 +5,19 @@ metadata:
   name: nids
   namespace: default
   annotations:
-    mybuilds.brendanmanley.com/release-id: "mynids/7eed2b5/production/34"
-    mybuilds.brendanmanley.com/source-sha: "7eed2b559c67d652735836a890931fd8f700eb18"
-    mybuilds.brendanmanley.com/artifact-digest: "sha256:561a15e10743d766566f3ba0615b78b294a4511fd90a7913ba6b9b0f7e78c459"
+    mybuilds.brendanmanley.com/release-id: "mynids/09f36c4/production/35"
+    mybuilds.brendanmanley.com/source-sha: "09f36c41e4633ea92438b438add6c3903e15c9e6"
+    mybuilds.brendanmanley.com/artifact-digest: "sha256:975db12988fc9cd7b4712914619dbc9cdf6b09ea5045bfbcb0bdc3de3e844f6b"
 spec:
   template:
     metadata:
       annotations:
-        mybuilds.brendanmanley.com/release-id: "mynids/7eed2b5/production/34"
-        mybuilds.brendanmanley.com/source-sha: "7eed2b559c67d652735836a890931fd8f700eb18"
-        mybuilds.brendanmanley.com/artifact-digest: "sha256:561a15e10743d766566f3ba0615b78b294a4511fd90a7913ba6b9b0f7e78c459"
+        mybuilds.brendanmanley.com/release-id: "mynids/09f36c4/production/35"
+        mybuilds.brendanmanley.com/source-sha: "09f36c41e4633ea92438b438add6c3903e15c9e6"
+        mybuilds.brendanmanley.com/artifact-digest: "sha256:975db12988fc9cd7b4712914619dbc9cdf6b09ea5045bfbcb0bdc3de3e844f6b"
     spec:
       containers:
         - name: web
           env:
             - name: RELEASE_ID
-              value: "mynids/7eed2b5/production/34"
+              value: "mynids/09f36c4/production/35"
