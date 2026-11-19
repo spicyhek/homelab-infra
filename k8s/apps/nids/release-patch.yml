@@ -1,0 +1,23 @@
+# Rewritten by the mynids release workflow on every promotion.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nids
+  namespace: default
+  annotations:
+    mybuilds.brendanmanley.com/release-id: "mynids/7eed2b5/production/34"
+    mybuilds.brendanmanley.com/source-sha: "7eed2b559c67d652735836a890931fd8f700eb18"
+    mybuilds.brendanmanley.com/artifact-digest: "sha256:561a15e10743d766566f3ba0615b78b294a4511fd90a7913ba6b9b0f7e78c459"
+spec:
+  template:
+    metadata:
+      annotations:
+        mybuilds.brendanmanley.com/release-id: "mynids/7eed2b5/production/34"
+        mybuilds.brendanmanley.com/source-sha: "7eed2b559c67d652735836a890931fd8f700eb18"
+        mybuilds.brendanmanley.com/artifact-digest: "sha256:561a15e10743d766566f3ba0615b78b294a4511fd90a7913ba6b9b0f7e78c459"
+    spec:
+      containers:
+        - name: web
+          env:
+            - name: RELEASE_ID
+              value: "mynids/7eed2b5/production/34"
