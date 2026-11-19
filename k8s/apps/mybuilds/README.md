@@ -71,6 +71,7 @@ Both are created by hand and never stored in Git.
 | `MYBUILDS_GITHUB_WEBHOOK_SECRET` | The webhook on each tracked repository (Workflow runs and Workflow jobs events) |
 | `MYBUILDS_CI_EVENT_SECRET` | The `MYBUILDS_CI_EVENT_SECRET` Actions secret of each tracked repository |
 | `MYBUILDS_ARGOCD_TOKEN` | The `mybuilds-argocd-token` key of `argocd-notifications-secret`, used by the `mybuilds` webhook service in [`../../argocd/notifications`](../../argocd/notifications) |
+| `MYBUILDS_GITHUB_TOKEN` | Nowhere else: a fine-grained GitHub token for the tracked repositories with Actions: Read-only, which lets mybuilds follow running jobs' steps. Add it with `kubectl -n default patch secret mybuilds-ingest --type merge -p '{"stringData":{"MYBUILDS_GITHUB_TOKEN":"…"}}'` |
 
 Generate the values into a file outside the repository, create the Secret
 from it, then copy each value to the place in the table and delete the file:

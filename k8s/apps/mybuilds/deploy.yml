@@ -147,6 +147,14 @@ spec:
                   name: mybuilds-ingest
                   key: MYBUILDS_ARGOCD_TOKEN
                   optional: true
+            # Read-only GitHub token for following running jobs' steps.
+            # Without it, steps update only when a job starts and ends.
+            - name: MYBUILDS_GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: mybuilds-ingest
+                  key: MYBUILDS_GITHUB_TOKEN
+                  optional: true
             # The ingestion buffer's queue (README, "Ingestion buffer").
             # Without the Secret, the consumer is off and only the direct
             # endpoints receive.
