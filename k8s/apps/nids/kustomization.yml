@@ -6,7 +6,7 @@ resources:
 
 images:
   - name: ghcr.io/spicyhek/mynids
-    digest: sha256:30c70bfdb4307dee893582a701563ed8265e07019f44fa9c75785e8e8f5f1a24
+    digest: sha256:69a0e1e19527e1d1967a294b9b2673984c3cb58607baa99c37405684655f9795
 
 patches:
   - path: release-patch.yml
