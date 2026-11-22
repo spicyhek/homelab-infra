@@ -14,7 +14,7 @@ configMapGenerator:
 
 images:
   - name: ghcr.io/spicyhek/mybuilds
-    digest: sha256:b24c671c6db3ef17bf7c26e60158d18672814256eee5c11a1cc3a252d0961a64
+    digest: sha256:c37b79e0ba0c8f8a7b47ec1a6cb7ba6d4d0465f651591c757e0477cfea9f5380
 
 patches:
   - path: release-patch.yml
