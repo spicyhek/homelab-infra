@@ -1,8 +1,10 @@
 import concurrent.futures
 import datetime
+import http.client
 import json
 import os
 import time
+import urllib.error
 import urllib.request
 
 import boto3
@@ -17,11 +19,41 @@ METRICS = {
 }
 PROBE_METRIC = "ProbeExecutionHealthy"
 
+# Two attempts of at most 8 seconds each, 2 seconds apart, keep a failing check
+# near 18 seconds, inside the 30-second Lambda timeout. One retry absorbs a single
+# dropped TLS handshake or response on the path from AWS to Cloudflare
+# (docs/postmortems/2026-11-23-probe-path-timeouts-alarm-flapping.md); a real
+# outage still fails both attempts.
+FETCH_ATTEMPTS = 2
+FETCH_TIMEOUT_SECONDS = 8
+RETRY_DELAY_SECONDS = 2
+
+
+def fetch_once(url):
+    request = urllib.request.Request(url, headers={"User-Agent": "homelab-reliability-probe/1.0"})
+    with urllib.request.urlopen(request, timeout=FETCH_TIMEOUT_SECONDS) as response:
+        return response.status, response.read()
+
 
 def fetch(url):
-    request = urllib.request.Request(url, headers={"User-Agent": "homelab-reliability-probe/1.0"})
-    with urllib.request.urlopen(request, timeout=10) as response:
-        return response.status, response.read()
+    """Fetch url, retrying once after a network error or a 5xx response.
+
+    A 4xx response is returned to the caller's check by raising at once: it is
+    an answer from the service, not a dropped request.
+    """
+    for attempt in range(1, FETCH_ATTEMPTS + 1):
+        try:
+            return fetch_once(url)
+        except urllib.error.HTTPError as error:
+            if error.code < 500 or attempt == FETCH_ATTEMPTS:
+                raise
+            reason = f"HTTP {error.code}"
+        except (OSError, http.client.HTTPException) as error:
+            if attempt == FETCH_ATTEMPTS:
+                raise
+            reason = str(error)
+        print(json.dumps({"url": url, "attempt": attempt, "retrying_after": reason}))
+        time.sleep(RETRY_DELAY_SECONDS)
 
 
 def check_cluster():
@@ -90,14 +122,44 @@ CHECKS = (
 )
 
 
-def publish_metric(name, healthy):
+def run_minute(event):
+    """Return the minute this run belongs to, as an aware UTC datetime.
+
+    Every datapoint of a run is stamped with this minute. Without an explicit
+    timestamp CloudWatch uses the time each datapoint arrives; runs start at
+    about :58, so a check that waits out its timeout lands in the next minute.
+    That gives one minute two datapoints (the 1-minute alarms take the Minimum)
+    and the next none (missing data is treated as breaching), and two
+    non-consecutive failures could fire a 2-of-2 alarm. The scheduled time from
+    the EventBridge event is used because it does not drift; the handler's
+    start time is the fallback for a manual invocation.
+    """
+    scheduled = event.get("time") if isinstance(event, dict) else None
+    moment = None
+    if isinstance(scheduled, str):
+        try:
+            moment = datetime.datetime.fromisoformat(scheduled.replace("Z", "+00:00"))
+        except ValueError:
+            moment = None
+    if moment is None or moment.tzinfo is None:
+        moment = datetime.datetime.now(datetime.timezone.utc)
+    return moment.astimezone(datetime.timezone.utc).replace(second=0, microsecond=0)
+
+
+def publish_metric(name, healthy, timestamp):
     cloudwatch.put_metric_data(
         Namespace=os.environ["METRIC_NAMESPACE"],
-        MetricData=[{"MetricName": name, "Value": int(healthy), "Unit": "Count"}],
+        MetricData=[{
+            "MetricName": name,
+            "Value": int(healthy),
+            "Unit": "Count",
+            "Timestamp": timestamp,
+        }],
     )
 
 
 def lambda_handler(event, context):
+    timestamp = run_minute(event)
     results = {}
     metric_publication_succeeded = True
 
@@ -112,7 +174,7 @@ def lambda_handler(event, context):
                 print(json.dumps({"check": key, "error": str(error)}))
 
             try:
-                publish_metric(METRICS[key], results[key])
+                publish_metric(METRICS[key], results[key], timestamp)
             except Exception as error:
                 metric_publication_succeeded = False
                 print(json.dumps({"metric": METRICS[key], "error": str(error)}))
@@ -120,7 +182,7 @@ def lambda_handler(event, context):
     execution_healthy = metric_publication_succeeded and len(results) == len(CHECKS)
 
     try:
-        publish_metric(PROBE_METRIC, execution_healthy)
+        publish_metric(PROBE_METRIC, execution_healthy, timestamp)
     except Exception as error:
         execution_healthy = False
         print(json.dumps({"metric": PROBE_METRIC, "error": str(error)}))
