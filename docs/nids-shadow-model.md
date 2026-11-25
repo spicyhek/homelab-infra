@@ -174,6 +174,18 @@ The image must be `sha-4160e63…` or later (mynids #12), which already runs wit
        wildcard (`scp "host:/var/lib/zeek-logs/conn.2026-11-07-0*.log" .`), or
        `ssh host "tar cf - -C /dir a b" | tar xf -` from Git Bash. Windows OpenSSH cannot multiplex connections.
        (Tested 2026-11-08; the table is in mynids `training/CAPTURE_GUIDE.md`.)
+     - BRUTE_FORCE on AI-agent diagnostic sessions (Claude Code), which run each check as a separate
+       `ssh brendanmanley@homelab-control-plane "..."` from Git Bash. Seen in operation on 2026-11-23 23:26–23:32 PST
+       (1 alert, bucket 2026-11-24T07:00Z): 9 sessions in 6 minutes, all `Accepted publickey` with the desktop's
+       `homelab` key (`SHA256:VYTCCx…`) on the first attempt, `conn_state` `SF`, 0 failed or pre-auth attempts in sshd,
+       and each login matched a Bash tool call in the session transcript. It recurred on 2026-11-25 13:10–13:11 PST
+       (bucket 2026-11-25T21:00Z) from the investigation of that alert: 6 sessions in 65 s. To tell this case apart,
+       check sshd (`journalctl -u ssh`): every session is `Accepted publickey` for `brendanmanley` with the
+       `homelab` key and nothing failed. The source is a temporary IPv6 address in the LAN prefix that the desktop
+       rotates. The Zeek `ssh.log` client depends on the agent's shell: `SSH-2.0-OpenSSH_9.7` from Git Bash,
+       `SSH-2.0-OpenSSH_for_Windows_9.5` from PowerShell. Zeek's `auth_attempts` can read 3 for Windows `ssh` even
+       though sshd logged no failures, so go by sshd, not that field. To reduce it, batch checks into fewer `ssh`
+       calls.
      - DOS_DDOS on a single aborted HTTP connection to a Tailscale DERP relay (`derp*.tailscale.com`).
 
 ## Roll back
