@@ -6,11 +6,7 @@ metadata:
 data:
   PORT: "8080"
   NIDS_DB_PATH: /data/nids.sqlite3
-  NIDS_MODEL_PATH: /app/cicids2018_dense_model.keras
-  NIDS_SCALER_PATH: /app/scaler.joblib
   NIDS_FEATURE_ORDER_PATH: /app/feature_order.json
-  NIDS_LABEL_MAP_PATH: /app/label_map.json
-  NIDS_LABEL_ENCODER_PATH: /app/label_encoder.joblib
   NIDS_PUBLIC_WINDOW_MINUTES: "60"
   NIDS_MAX_HISTORY_HOURS: "672"
   NIDS_RETENTION_HOURS: "672"
@@ -72,15 +68,14 @@ spec:
                 secretKeyRef:
                   name: nids-secrets
                   key: NIDS_INGEST_TOKEN
-            # Operational model: the zeek-conn-window-v2 tree (nids-v6-tree-baseline-v2; passed the
-            # reserved final test 2026-11-05, the live parity re-check 2026-11-07 and 3 days of shadow;
-            # the operator waived the rest of the planned week of shadow).
-            # It labels flows with a warm, undegraded window. The built-in Keras model labels the rest
-            # (cold windows after restarts, flows without v2 features) and runs in shadow on the flows
-            # v2 labeled. If the bundle fails to load or run, flows get the Keras label and /healthz is
-            # degraded, but /readyz stays ready so ingestion continues.
+            # The model: the zeek-conn-window-v2 tree (nids-v6-tree-baseline-v2; passed the reserved
+            # final test 2026-11-05 and the live parity re-check 2026-11-07; operational since
+            # 2026-11-08). It labels flows with a warm, undegraded window; the rest are stored as
+            # unvalidated. If the bundle fails to load or run, flows are stored as unvalidated and
+            # /healthz is degraded, but /readyz stays ready so ingestion continues.
             # The app unpickles the bundle only if tree_model.joblib matches this SHA-256.
-            # Roll back by setting NIDS_OPERATIONAL_MODEL to keras (v2 returns to shadow).
+            # mynids 1.x needs NIDS_OPERATIONAL_MODEL=v2 (its default is the Keras model); 2.0.0 removed
+            # Keras and still accepts the value, so drop it once 2.0.0 or later is deployed.
             - name: NIDS_OPERATIONAL_MODEL
               value: v2
             - name: NIDS_V2_MODEL_DIR
