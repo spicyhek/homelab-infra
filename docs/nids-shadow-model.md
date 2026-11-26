@@ -1,17 +1,18 @@
-# nids models: v2 tree operational, Keras in shadow
+# nids model: the v2 tree
 
-The nids API runs two classifiers. `NIDS_OPERATIONAL_MODEL` decides whose labels are operational:
+The nids API has one model: the `zeek-conn-window-v2` tree. It labels every flow with a warm, undegraded window (it
+reads the v2 features the Zeek converter sends alongside the normal flows). The rest are stored as unvalidated with
+the reason: the ~60 s of cold windows after a converter restart (`window_not_warm`), degraded windows, and flows
+without v2 features. Alert-side rules then relabel known benign look-alikes (mynids `app/alert_rules.py`).
 
-- **`v2` (current):** the `zeek-conn-window-v2` tree labels every flow with a warm, undegraded window (it reads the
-  v2 features the Zeek converter sends alongside the normal flows). The built-in Keras model labels the rest: the
-  ~60 s of cold windows after a converter restart, and flows without v2 features. Keras also runs in **shadow** on
-  the flows v2 labeled, stored in `shadow_predictions`.
-- **`keras` (the app default, and the rollback):** Keras labels everything; v2 runs in shadow.
+If the v2 bundle cannot load or fails on a batch, every flow in it is stored as unvalidated (`v2_unavailable`),
+`/healthz` reports `degraded` with "Model inference is unavailable; flows are stored as unvalidated until it
+recovers", and `/readyz` stays ready, so ingestion never stops because of the model. Every stored flow records
+`model_id`: the model, plus the alert rule that relabeled it if any, or none when no model judged it.
 
-If the v2 bundle cannot load or fails on a batch, every flow in it gets the Keras label, `/healthz` reports
-`degraded` with "The operational v2 model is unavailable; flows are labeled by the Keras fallback model", and
-`/readyz` stays ready, so ingestion never stops because of v2. Every stored flow records `model_id`, the model
-whose label it carries.
+History: v2 ran in shadow beside the original Keras model from 2026-11-05 and became operational on 2026-11-08
+(#55). Keras then labeled only the flows v2 could not judge and ran in shadow, until mynids 2.0.0 removed it.
+The sections below on promotion and shadow review are the record of that rollout.
 
 Operational v2 model: `nids-v6-tree-baseline-v2`, `tree_model.joblib` sha256
 `e0c5b9fd21a3c19880e53eb9694d6f475e6df5f1731318fd96c2b010b6ac6ba8`. It passed the mynids reserved final test on
@@ -205,7 +206,8 @@ The image must be `sha-4160e63…` or later (mynids #12), which already runs wit
 
 ## Roll back
 
-- **From operational v2 to shadow:** set `NIDS_OPERATIONAL_MODEL` to `keras` (or revert the promotion PR). Stored
-  rows keep the `model_id` that labeled them, and v2 goes back to shadow.
-- **Remove v2 entirely:** also remove `NIDS_V2_MODEL_DIR` / `NIDS_V2_MODEL_SHA256`, the mount and the converter
-  flag. The staged bundle can stay; it is inert without the variables. Shadow rows age out with normal retention.
+- **To another v2 bundle:** stage it under `/var/lib/mynids-models` and point `NIDS_V2_MODEL_DIR` /
+  `NIDS_V2_MODEL_SHA256` at it. Stored rows keep the `model_id` that labeled them.
+- **To the Keras model:** no longer possible in place. mynids 2.0.0 removed it, and `NIDS_OPERATIONAL_MODEL=keras`
+  now stops the app at startup. Deploying a 1.x image (1.10.0 is the last) with `NIDS_OPERATIONAL_MODEL=keras`
+  restores it.
