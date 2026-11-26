@@ -186,7 +186,22 @@ The image must be `sha-4160e63…` or later (mynids #12), which already runs wit
        `SSH-2.0-OpenSSH_for_Windows_9.5` from PowerShell. Zeek's `auth_attempts` can read 3 for Windows `ssh` even
        though sshd logged no failures, so go by sshd, not that field. To reduce it, batch checks into fewer `ssh`
        calls.
-     - DOS_DDOS on a single aborted HTTP connection to a Tailscale DERP relay (`derp*.tailscale.com`).
+     - DOS_DDOS on a single aborted HTTP connection to a Tailscale DERP relay (`derp*.tailscale.com`). Seen in
+       operation on 2026-11-25 13:47 PST (bucket 2026-11-25T21:00Z): control plane → `192.73.240.121:80`, 3 packets,
+       history `ShR`. Tailscale reaches DERP relays by IP from its DERP map, so `dns.log` has no lookup for them. To
+       tell this case apart, look for other connections to the same IP in the same minute: `http.log` shows
+       `GET /generate_204` from `Go-http-client/1.1` answered 204 (Tailscale's captive-portal check), and `conn.log`
+       usually shows STUN to UDP 3478.
+     - OTHER_ATTACK on DNS retries over TCP that the router refuses. Seen in operation on 2026-11-25 13:49–13:52 PST
+       (3 alerts at 0.61–0.64, bucket 2026-11-25T21:00Z). When the router (`192.168.1.254`, `2600:1700:38c0:a2e0::1`)
+       doesn't answer a UDP query, here `github.com AAAA`, the control plane's resolver retries over TCP/53. The router
+       doesn't serve DNS over TCP, so every attempt is `REJ` with history `Sr` (1 packet each way). It sent about 70
+       such pairs over IPv4 and IPv6 between 13:49 and 13:56 PST, and v2 flagged 3 of them. In the same 5 minutes
+       the router left about half of the control plane's UDP queries unanswered (Zeek `S0`). No Kubernetes job or
+       systemd timer ran then. The `github.com` lookups are probably Argo CD's repo-server polling Git through
+       CoreDNS (an `_grpc_config.argocd-repo-server` lookup appears in the same seconds). Lookups of the
+       `homelab-backups-…` S3 bucket were happening at the same time too. To tell this case apart, check that the source is the control plane, the destination is the
+       router on TCP 53, `conn_state` is `REJ` and `dns.log` has unanswered UDP queries (no `rcode`) just before.
 
 ## Roll back
 

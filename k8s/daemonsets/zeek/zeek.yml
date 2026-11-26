@@ -81,6 +81,8 @@ spec:
             # its checkpoint is zeek-forwarder-state.json.http, beside the conn checkpoint.
             - name: NIDS_HTTP_LOG_PATH
               value: /zeek-logs/http.log
+            - name: NIDS_SSH_LOG_PATH
+              value: /zeek-logs/ssh.log
           volumeMounts:
             - name: zeek-logs
               mountPath: /zeek-logs
