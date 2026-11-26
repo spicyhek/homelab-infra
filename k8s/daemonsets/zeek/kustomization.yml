@@ -17,4 +17,4 @@ configMapGenerator:
 # The zeek/zeek images are pinned by digest in zeek.yml and are not affected.
 images:
   - name: ghcr.io/spicyhek/mynids
-    newTag: sha-e3f4ccad4dbc0dedfca170b9b184301a61823bdd
+    newTag: sha-35caecdb769214f09af3bc77e909230d4e159be0
